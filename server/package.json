@@ -1,0 +1,22 @@
+{
+  "name": "daily-carddraw-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "每日抽卡插件配套的 Node.js 后端：抽卡计算、每日配额、查询接口与管理后台",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "smoke": "node scripts/smoke-http.js && node scripts/smoke-draw.js",
+    "smoke:plugin": "node scripts/smoke-plugin.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.11.3"
+  }
+}

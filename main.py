@@ -1,6 +1,12 @@
 """
 AstrBot 每日抽卡插件
 基于文档规划实现的插件侧最小 MVC 骨架。
+
+约定：所有命令处理函数在回复后都会调用 `event.stop_event()`。
+AstrBot 的管道是「按优先级依次调用所有被唤醒的 handler，再把事件交给默认 LLM 请求」，
+不终止事件时，同一条 `/抽卡` 会继续被其他插件（多机器人路由、防抖、群聊上下文等）和
+大模型各自回答一遍。这里的做法与 AstrBot 内置插件一致：先 `yield` 让回复进入
+RespondStage 正常发送（保留引用/At 等发送装饰），发送后再终止事件传播。
 """
 
 from __future__ import annotations
@@ -52,10 +58,14 @@ class DailyCardDrawPlugin(Star):
             pool_service=self.pool_service,
         )
 
+        # 在实例化时打印，作为「插件已被 AstrBot 成功加载」的可靠标志：
+        # 通过 WebUI 重载/启用插件也会走到这里，而 on_astrbot_loaded 只在 AstrBot 启动时触发一次。
+        logger.info("每日抽卡插件已加载完成。")
+
     @filter.on_astrbot_loaded()
     async def on_astrbot_loaded(self):
         """AstrBot 初始化完成后的提示。"""
-        logger.info("每日抽卡插件已加载完成。")
+        logger.info("每日抽卡插件已就绪，等待抽卡指令。")
 
     def _parse_pool_and_mode(self, *segments: str) -> tuple[str, DrawMode]:
         clean_segments = [segment.strip() for segment in segments if str(segment).strip()]
@@ -88,7 +98,9 @@ class DailyCardDrawPlugin(Star):
             message = f"抽卡失败：{exc}"
         except ValueError as exc:
             message = f"抽卡参数异常：{exc}"
+        # 回复后终止事件传播：避免同一个命令再被其他插件的 handler 或默认 LLM 请求回答一遍。
         yield event.plain_result(message)
+        event.stop_event()
 
     @filter.command("今日抽卡")
     async def today(self, event: AstrMessageEvent, pool_key: str = ""):
@@ -103,6 +115,7 @@ class DailyCardDrawPlugin(Star):
         except ApiClientError as exc:
             message = f"查询今日记录失败：{exc}"
         yield event.plain_result(message)
+        event.stop_event()
 
     @filter.command("抽卡历史")
     async def history(self, event: AstrMessageEvent, page: int = 1, page_size: int = 10):
@@ -117,6 +130,7 @@ class DailyCardDrawPlugin(Star):
         except ApiClientError as exc:
             message = f"查询历史失败：{exc}"
         yield event.plain_result(message)
+        event.stop_event()
 
     @filter.command("抽卡统计")
     async def stats(self, event: AstrMessageEvent):
@@ -127,6 +141,7 @@ class DailyCardDrawPlugin(Star):
         except ApiClientError as exc:
             message = f"查询统计失败：{exc}"
         yield event.plain_result(message)
+        event.stop_event()
 
     @filter.command("卡池列表")
     async def pool_list(self, event: AstrMessageEvent):
@@ -137,6 +152,7 @@ class DailyCardDrawPlugin(Star):
         except ApiClientError as exc:
             message = f"查询卡池失败：{exc}"
         yield event.plain_result(message)
+        event.stop_event()
 
     @filter.command("重置抽卡次数")
     async def reset_quota(self, event: AstrMessageEvent, target_qq_id: str, pool_id: str):
@@ -151,6 +167,7 @@ class DailyCardDrawPlugin(Star):
         except ApiClientError as exc:
             message = f"重置次数失败：{exc}"
         yield event.plain_result(message)
+        event.stop_event()
 
     @filter.command("抽卡帮助", alias={"抽卡help", "carddraw_help"})
     async def help(self, event: AstrMessageEvent):
@@ -158,17 +175,19 @@ class DailyCardDrawPlugin(Star):
         message = "\n".join(
             [
                 "【每日抽卡插件帮助】",
-                "1. /抽卡",
-                "2. /抽卡 十连",
-                "3. /抽卡 常驻池",
-                "4. /抽卡 常驻池 十连",
-                "5. /今日抽卡",
-                "6. /抽卡历史 1 10",
-                "7. /抽卡统计",
-                "管理员命令：/卡池列表、/重置抽卡次数 <QQ号> <卡池ID>",
+                "1. /抽卡 —— 默认卡池单抽",
+                "2. /抽卡 十连 —— 默认卡池十连（10连、ten 等效）",
+                "3. /抽卡 <卡池Key> —— 指定卡池单抽，例如 /抽卡 normal_pool",
+                "4. /抽卡 <卡池Key> 十连 —— 指定卡池十连",
+                "5. /今日抽卡 [卡池Key] —— 今日次数与最近结果",
+                "6. /抽卡历史 [页码] [每页数量] —— 历史记录，默认 1 10",
+                "7. /抽卡统计 —— 累计统计",
+                "8. /抽卡帮助 —— 本帮助（别名：/抽卡help、/carddraw_help）",
+                "管理员命令：/卡池列表、/重置抽卡次数 <QQ号> <卡池ID>（两个参数必填）",
             ]
         )
         yield event.plain_result(message)
+        event.stop_event()
 
     async def terminate(self):
         """插件卸载时清理。"""

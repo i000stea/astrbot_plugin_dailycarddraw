@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>每日抽卡 · 记录查询</title>
+    <link rel="stylesheet" href="/assets/style.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="topbar">
+        <div class="brand">
+          <h1>每日抽卡 · 记录查询</h1>
+          <span>QQ 全局口径 · 每日次数按自然日重置</span>
+        </div>
+        <a href="/admin">进入管理后台 →</a>
+      </div>
+
+      <div id="msg" class="msg"></div>
+
+      <div class="card">
+        <h2>查询条件</h2>
+        <div class="row">
+          <div class="field">
+            <label for="qqId">QQ 号</label>
+            <input id="qqId" placeholder="例如 123456789" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="poolKey">卡池</label>
+            <select id="poolKey"></select>
+          </div>
+          <div class="field" style="flex: 0 0 auto">
+            <button id="searchBtn">查询</button>
+          </div>
+        </div>
+        <p class="hint" style="margin: 12px 0 0">
+          同一个 QQ 在不同群共享同一份每日抽卡状态。
+        </p>
+      </div>
+
+      <div id="result" class="hidden">
+        <div class="grid">
+          <div class="card">
+            <h2>今日次数 <span class="tag" id="poolNameTag"></span></h2>
+            <div class="grid" style="grid-template-columns: 1fr 1fr">
+              <div class="stat">
+                <div class="label">单抽</div>
+                <div class="value" id="singleQuota">-/-</div>
+              </div>
+              <div class="stat">
+                <div class="label">十连</div>
+                <div class="value" id="tenQuota">-/-</div>
+              </div>
+            </div>
+            <div style="margin-top: 14px">
+              <div class="label muted" style="font-size: 12px; margin-bottom: 8px">最近一次结果</div>
+              <div id="latestCards" class="cards"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>累计统计</h2>
+            <div class="grid" style="grid-template-columns: 1fr 1fr">
+              <div class="stat">
+                <div class="label">总抽卡次数</div>
+                <div class="value" id="totalDraw">0</div>
+              </div>
+              <div class="stat">
+                <div class="label">累计积分</div>
+                <div class="value" id="totalScore">0</div>
+              </div>
+              <div class="stat">
+                <div class="label">SSR</div>
+                <div class="value" id="ssrCount">0</div>
+              </div>
+              <div class="stat">
+                <div class="label">UR</div>
+                <div class="value" id="urCount">0</div>
+              </div>
+            </div>
+            <p class="hint" id="nicknameLine" style="margin-top: 12px"></p>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>历史记录 <span class="tag" id="historyTotal"></span></h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>卡池</th>
+                  <th>模式</th>
+                  <th>积分</th>
+                  <th>最高稀有度</th>
+                  <th>记录号</th>
+                </tr>
+              </thead>
+              <tbody id="historyBody"></tbody>
+            </table>
+          </div>
+          <div class="pager">
+            <button class="ghost small" id="prevPage">上一页</button>
+            <span id="pageInfo">第 1 页</span>
+            <button class="ghost small" id="nextPage">下一页</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/assets/query.js"></script>
+  </body>
+</html>

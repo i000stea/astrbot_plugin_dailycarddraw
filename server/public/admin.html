@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>每日抽卡 · 管理后台</title>
+    <link rel="stylesheet" href="/assets/style.css" />
+  </head>
+  <body>
+    <div id="loginView" class="wrap hidden">
+      <div class="login-box card">
+        <h2>管理后台登录</h2>
+        <div id="loginMsg" class="msg"></div>
+        <div class="field" style="margin-bottom: 12px">
+          <label for="loginUser">账号</label>
+          <input id="loginUser" value="admin" autocomplete="username" />
+        </div>
+        <div class="field" style="margin-bottom: 16px">
+          <label for="loginPass">密码</label>
+          <input id="loginPass" type="password" autocomplete="current-password" />
+        </div>
+        <button id="loginBtn" style="width: 100%">登录</button>
+        <p class="hint" style="margin-bottom: 0">
+          账号密码来自服务端 <code>.env</code> 的 <code>PANEL_USERNAME</code> / <code>PANEL_PASSWORD</code>。
+        </p>
+      </div>
+    </div>
+
+    <div id="appView" class="wrap hidden">
+      <div class="topbar">
+        <div class="brand">
+          <h1>每日抽卡 · 管理后台</h1>
+          <span id="whoami"></span>
+        </div>
+        <div style="display: flex; gap: 8px">
+          <a href="/" style="align-self: center">查询页 →</a>
+          <button class="ghost small" id="logoutBtn">退出登录</button>
+        </div>
+      </div>
+
+      <div id="msg" class="msg"></div>
+
+      <div class="tabs">
+        <button data-tab="overview" class="active">概览</button>
+        <button data-tab="pools">卡池</button>
+        <button data-tab="cards">卡牌</button>
+        <button data-tab="users">用户</button>
+        <button data-tab="records">流水</button>
+      </div>
+
+      <!-- 概览 -->
+      <section id="tab-overview">
+        <div class="grid" id="overviewGrid"></div>
+      </section>
+
+      <!-- 卡池 -->
+      <section id="tab-pools" class="hidden">
+        <div class="card">
+          <h2>
+            卡池列表
+            <button class="small" id="newPoolBtn" style="margin-left: auto">新建卡池</button>
+          </h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>pool_key</th>
+                  <th>名称</th>
+                  <th>启用</th>
+                  <th>单抽</th>
+                  <th>十连</th>
+                  <th>单抽配额</th>
+                  <th>十连配额</th>
+                  <th>起止时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="poolsBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 卡牌 -->
+      <section id="tab-cards" class="hidden">
+        <div class="card">
+          <h2>
+            卡牌列表
+            <button class="small" id="newCardBtn" style="margin-left: auto">新建卡牌</button>
+          </h2>
+          <div class="row" style="margin-bottom: 12px">
+            <div class="field">
+              <label for="cardKeyword">按名称 / 标识搜索</label>
+              <input id="cardKeyword" placeholder="留空显示全部" />
+            </div>
+            <div class="field" style="flex: 0 0 auto">
+              <button class="ghost" id="cardSearchBtn">搜索</button>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>card_key</th>
+                  <th>名称</th>
+                  <th>稀有度</th>
+                  <th>积分</th>
+                  <th>启用</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="cardsBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 用户 -->
+      <section id="tab-users" class="hidden">
+        <div class="card">
+          <h2>用户档案</h2>
+          <div class="row" style="margin-bottom: 12px">
+            <div class="field">
+              <label for="userKeyword">QQ 号或昵称</label>
+              <input id="userKeyword" placeholder="支持模糊匹配" />
+            </div>
+            <div class="field" style="flex: 0 0 auto">
+              <button id="userSearchBtn">搜索</button>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>QQ</th>
+                  <th>昵称</th>
+                  <th>总抽数</th>
+                  <th>单抽</th>
+                  <th>十连</th>
+                  <th>积分</th>
+                  <th>SSR</th>
+                  <th>UR</th>
+                  <th>更新时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="usersBody"></tbody>
+            </table>
+          </div>
+          <div class="pager">
+            <button class="ghost small" id="userPrev">上一页</button>
+            <span id="userPageInfo">第 1 页</span>
+            <button class="ghost small" id="userNext">下一页</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 流水 -->
+      <section id="tab-records" class="hidden">
+        <div class="card">
+          <h2>抽卡流水</h2>
+          <div class="row" style="margin-bottom: 12px">
+            <div class="field">
+              <label for="recordQq">QQ 号</label>
+              <input id="recordQq" placeholder="留空为全部" />
+            </div>
+            <div class="field">
+              <label for="recordPool">卡池</label>
+              <select id="recordPool"><option value="">全部卡池</option></select>
+            </div>
+            <div class="field" style="flex: 0 0 auto">
+              <button id="recordSearchBtn">查询</button>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>QQ</th>
+                  <th>卡池</th>
+                  <th>模式</th>
+                  <th>积分</th>
+                  <th>最高稀有度</th>
+                  <th>记录号</th>
+                  <th>明细</th>
+                </tr>
+              </thead>
+              <tbody id="recordsBody"></tbody>
+            </table>
+          </div>
+          <div class="pager">
+            <button class="ghost small" id="recordPrev">上一页</button>
+            <span id="recordPageInfo">第 1 页</span>
+            <button class="ghost small" id="recordNext">下一页</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    </div>
+
+    <div class="modal" id="modal">
+      <div class="card">
+        <h2>
+          <span id="modalTitle">编辑</span>
+          <button class="ghost small" id="modalClose">关闭</button>
+        </h2>
+        <div id="modalMsg" class="msg"></div>
+        <div id="modalBody"></div>
+        <div class="row" style="margin-top: 16px; justify-content: flex-end">
+          <button class="ghost" id="modalCancel">取消</button>
+          <button id="modalSubmit">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/assets/admin.js"></script>
+  </body>
+</html>

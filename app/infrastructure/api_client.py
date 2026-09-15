@@ -11,6 +11,21 @@ class ApiClientError(Exception):
     """远程 API 调用异常。"""
 
 
+def _extract_error_message(response: httpx.Response) -> str:
+    """后端返回 4xx/5xx 时优先取统一外壳里的 message，避免把整段 JSON 丢给用户看。"""
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return response.text
+
+    if isinstance(payload, dict):
+        message = payload.get("message")
+        if message:
+            return str(message)
+    return response.text
+
+
 class DailyCardDrawApiClient:
     """每日抽卡后端 API 客户端。"""
 
@@ -53,7 +68,8 @@ class DailyCardDrawApiClient:
 
         if response.status_code >= 400:
             raise ApiClientError(
-                f"云端接口返回异常状态码：{response.status_code}，响应内容：{response.text}"
+                f"云端接口返回异常状态码：{response.status_code}，原因："
+                f"{_extract_error_message(response)}"
             )
 
         try:
