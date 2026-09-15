@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 
-from app.infrastructure.config_helper import ConfigHelper
+from .config_helper import ConfigHelper
 
 
 class ApiClientError(Exception):

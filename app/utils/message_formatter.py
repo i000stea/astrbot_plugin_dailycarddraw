@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.infrastructure.time_helper import now_text
-from app.models.dto import DrawResult, HistoryRecord, PoolInfo, TodaySummary, UserStats
+from ..infrastructure.time_helper import now_text
+from ..models.dto import DrawResult, HistoryRecord, PoolInfo, TodaySummary, UserStats
 
 
 def format_draw_result(qq_id: str, result: DrawResult) -> str:

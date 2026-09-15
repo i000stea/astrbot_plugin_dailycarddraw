@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.infrastructure.config_helper import ConfigHelper
+from .config_helper import ConfigHelper
 
 
 class AdminAuthService:

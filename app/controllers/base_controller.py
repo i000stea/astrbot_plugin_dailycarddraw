@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from astrbot.api.event import AstrMessageEvent
 
-from app.infrastructure.auth import AdminAuthService
-from app.infrastructure.config_helper import ConfigHelper
-from app.models.view_models import CommandContext
+from ..infrastructure.auth import AdminAuthService
+from ..infrastructure.config_helper import ConfigHelper
+from ..models.view_models import CommandContext
 
 
 class BaseController:

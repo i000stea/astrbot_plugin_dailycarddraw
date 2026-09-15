@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.infrastructure.api_client import DailyCardDrawApiClient
-from app.models.dto import HistoryRecord, TodaySummary, UserStats
+from ..infrastructure.api_client import DailyCardDrawApiClient
+from ..models.dto import HistoryRecord, TodaySummary, UserStats
 
 
 class QueryService:

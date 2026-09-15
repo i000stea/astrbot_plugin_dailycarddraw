@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from app.infrastructure.api_client import DailyCardDrawApiClient
-from app.models.dto import DrawResult
-from app.models.enums import DrawMode
+from ..infrastructure.api_client import DailyCardDrawApiClient
+from ..models.dto import DrawResult
+from ..models.enums import DrawMode
 
 
 class DrawService:

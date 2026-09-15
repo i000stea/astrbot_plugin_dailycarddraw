@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from app.controllers.base_controller import BaseController
-from app.services.pool_service import PoolService
-from app.utils.message_formatter import format_pool_list, format_reset_quota
+from .base_controller import BaseController
+from ..services.pool_service import PoolService
+from ..utils.message_formatter import format_pool_list, format_reset_quota
 
 
 class AdminController(BaseController):

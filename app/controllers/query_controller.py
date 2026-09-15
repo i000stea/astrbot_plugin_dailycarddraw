@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from app.controllers.base_controller import BaseController
-from app.services.query_service import QueryService
-from app.utils.message_formatter import (
+from .base_controller import BaseController
+from ..services.query_service import QueryService
+from ..utils.message_formatter import (
     format_history,
     format_today_summary,
     format_user_stats,

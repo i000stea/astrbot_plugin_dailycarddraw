@@ -9,16 +9,16 @@ from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 
-from app.controllers.admin_controller import AdminController
-from app.controllers.draw_controller import DrawController
-from app.controllers.query_controller import QueryController
-from app.infrastructure.api_client import ApiClientError, DailyCardDrawApiClient
-from app.infrastructure.auth import AdminAuthService
-from app.infrastructure.config_helper import ConfigHelper
-from app.models.enums import DrawMode
-from app.services.draw_service import DrawService
-from app.services.pool_service import PoolService
-from app.services.query_service import QueryService
+from .app.controllers.admin_controller import AdminController
+from .app.controllers.draw_controller import DrawController
+from .app.controllers.query_controller import QueryController
+from .app.infrastructure.api_client import ApiClientError, DailyCardDrawApiClient
+from .app.infrastructure.auth import AdminAuthService
+from .app.infrastructure.config_helper import ConfigHelper
+from .app.models.enums import DrawMode
+from .app.services.draw_service import DrawService
+from .app.services.pool_service import PoolService
+from .app.services.query_service import QueryService
 
 
 class DailyCardDrawPlugin(Star):

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from app.controllers.base_controller import BaseController
-from app.models.enums import DrawMode
-from app.services.draw_service import DrawService
-from app.utils.message_formatter import format_draw_result
+from .base_controller import BaseController
+from ..models.enums import DrawMode
+from ..services.draw_service import DrawService
+from ..utils.message_formatter import format_draw_result
 
 
 class DrawController(BaseController):

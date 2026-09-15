@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.models.enums import DrawMode
+from .enums import DrawMode
 
 
 @dataclass
