@@ -1,399 +1,205 @@
-# AstrBot 消息防抖插件
+# AstrBot 每日抽卡插件
 
-> ⚠️ **注意：本插件仅支持 AstrBot 4.11+ 版本使用**
-> 
-<div align="center">
+`astrbot_plugin_dailycarddraw` 是一个面向 QQ 号的 AstrBot 每日抽卡插件。
 
-[![GitHub stars](https://img.shields.io/github/stars/advent259141/astrbot_plugin_debounce?style=flat-square)](https://github.com/yourusername/astrbot_plugin_debounce)
-[![GitHub license](https://img.shields.io/github/license/advent259141/astrbot_plugin_debounce?style=flat-square)](LICENSE)
-[![AstrBot](https://img.shields.io/badge/AstrBot-v4.11+-blue?style=flat-square)](https://github.com/AstrBotdevs/AstrBot)
+它要解决的不是「返回一个随机结果」，而是给 QQ 群 / 私聊提供一套**按自然日、按 QQ 号全局统计**的抽卡玩法：
 
-**使用 BERT 模型智能判断用户是否说完一句话，减少不必要的 LLM 调用**
+- 群友每天可以抽一次单抽、一次十连，次数按 QQ 号每日重置
+- 抽卡结果、积分、稀有度会落到云端数据库，可随时查询今日记录、历史记录与累计统计
+- 管理员可以查看卡池、重置指定 QQ 的当日次数
+- 插件只做「命令接入 + 参数解析 + 权限判断 + 文本渲染」，抽卡概率、次数扣减、落库统计全部由云端后端 API 负责
 
-</div>
+> 数据范围约定：同一个 QQ 在不同群里共享同一份每日抽卡状态（QQ 全局口径）。
 
----
+## 功能一览
 
-## 📖 简介
+| 能力 | 说明 |
+| --- | --- |
+| 单抽 / 十连 | 默认卡池或指定卡池，均可单抽与十连 |
+| 多卡池 | 用卡池 Key 区分卡池，后续可扩展活动池 |
+| 每日次数 | 单抽与十连分别计数，按自然日重置 |
+| 今日记录 | 查询本人当日次数与最近抽卡结果 |
+| 历史记录 | 分页查询本人历史抽卡明细 |
+| 累计统计 | 总抽数、单抽/十连次数、累计积分、SSR / UR 数量 |
+| 管理能力 | 管理员查看卡池列表、重置指定 QQ 的当日次数 |
+| 使用范围控制 | 可分别开关群聊 / 私聊使用 |
 
-在实际使用聊天机器人时，用户经常会分多次发送一句话：
+## 安装
 
-```
-用户: 如果明天不下雨
-用户: 我们去爬山吧
-```
+### 前置条件
 
-传统的聊天机器人会分别处理这两句话，导致：
-- ❌ 第一句话语义不完整，LLM 回复质量差
-- ❌ 浪费 API 调用次数和费用
-- ❌ 用户体验不佳
+- AstrBot `>=4.16,<5`
+- 平台适配器：`aiocqhttp`、`qq_official` 或 `qq_official_webhook`
+- 一个已部署的每日抽卡云端后端（见下方「云端后端」），插件本身不直连数据库
 
-本插件通过训练的 BERT 模型**实时判断句子完整性**，只在用户说完整句话后才发送给 LLM，实现：
-- ✅ 智能防抖，自动合并未完成的消息
-- ✅ 减少 LLM 调用次数，节省成本
-- ✅ 提升对话质量和用户体验
+### 安装步骤
 
----
-
-## 🚀 功能特性
-
-- **智能判断**：基于 BERT 模型，准确识别中文句子是否完整
-- **双模型支持**：提供 Small（快速）和 Normal（精准）两种模型
-- **自动下载**：首次使用时自动从 ModelScope 下载模型
-- **灵活配置**：可调节判断阈值、超时时间等参数
-- **零感知**：静默工作，不打扰用户
-- **低开销**：使用 ONNX 推理，CPU 友好
-
----
-
-## 📦 安装
-
-### 方法一：通过 AstrBot 插件市场（推荐）
-
-1. 打开 AstrBot WebUI
-2. 进入「插件管理」
-3. 搜索「消息防抖」
-4. 点击「安装」
-
-### 方法二：手动安装
+把本仓库放到 AstrBot 的插件目录下（若该插件已上架 AstrBot 插件市场，也可直接在 WebUI「插件市场」中搜索安装）：
 
 ```bash
-cd AstrBot/data/plugins
-git clone https://github.com/yourusername/astrbot_plugin_debounce.git astrbot_plugin_debounce_multibot_fix
+cd <AstrBot>/data/plugins
+git clone https://github.com/i000stea/astrbot_plugin_dailycarddraw.git
 ```
 
-然后在 AstrBot WebUI 中重载插件列表。
+插件依赖仅一个：
 
----
+```bash
+pip install -r requirements.txt
+```
 
-## ⚙️ 配置说明
+安装后在 WebUI「插件管理」中重载插件，日志出现 `每日抽卡插件已加载完成。` 即为加载成功。
+
+## 配置说明
+
+配置项定义在 `_conf_schema.json`，在 AstrBot WebUI 的插件配置页填写即可。
 
 | 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `model_type` | 选择 | `small` | 模型类型：`small`（轻量快速）/ `normal`（精准度高） |
-| `send_threshold` | 浮点 | `0.5` | 完整性判断阈值（0-1），越高越严格 |
-| `timeout_seconds` | 整数 | `30` | 超时自动发送时间（秒），设为 0 禁用 |
-| `enabled` | 布尔 | `true` | 是否启用插件 |
-| `cancel_on_new_message` | 布尔 | `true` | LLM 回复前收到新消息时取消回复 |
-| `debug_mode` | 布尔 | `false` | 调试模式，输出详细日志 |
+| --- | --- | --- | --- |
+| `plugin_enabled` | bool | `true` | 插件总开关，关闭后所有抽卡、查询、管理命令都不生效 |
+| `api_base_url` | string | 空 | 云端后端地址，例如 `https://your-domain.com`；插件会在其后拼接 `/api/daily-carddraw/*` |
+| `api_token` | string（secret） | 空 | 后端鉴权 Token，会以 `Authorization: Bearer <token>` 发送；后端不需要鉴权时留空 |
+| `default_pool_key` | string | `normal_pool` | 默认卡池 Key，用户不带卡池参数时使用 |
+| `request_timeout_seconds` | float | `10` | 请求后端的超时时间（秒），最小按 1 秒生效 |
+| `admin_qq_list` | list | `[]` | 管理员 QQ 白名单，列表内 QQ 才能使用 `/卡池列表`、`/重置抽卡次数` |
+| `enable_group_usage` | bool | `true` | 是否允许群聊触发 |
+| `enable_private_usage` | bool | `true` | 是否允许私聊触发 |
 
-### 配置示例
+**最少需要配置的两项是 `api_base_url` 和 `admin_qq_list`**：不填 `api_base_url` 时，任何命令都会直接返回「未配置 `api_base_url`，当前无法请求云端后端。」
 
-```json
-{
-  "model_type": "small",
-  "send_threshold": 0.6,
-  "timeout_seconds": 30,
-  "enabled": true,
-  "cancel_on_new_message": true,
-  "debug_mode": false
-}
-```
+## 命令一览
 
----
+> 命令前缀取决于 AstrBot 的唤醒前缀设置（默认 `/`），下表以 `/` 为例。
 
-## 💡 使用示例
+### 用户命令（所有人可用）
 
-### 场景 1：分段输入
+| 命令 | 说明 |
+| --- | --- |
+| `/抽卡` | 对默认卡池单抽 |
+| `/抽卡 十连` | 对默认卡池十连（`10连`、`ten` 等效） |
+| `/抽卡 <卡池Key>` | 对指定卡池单抽，例如 `/抽卡 normal_pool` |
+| `/抽卡 <卡池Key> 十连` | 对指定卡池十连 |
+| `/今日抽卡 [卡池Key]` | 查询本人今日次数与最近结果，省略卡池则用默认卡池 |
+| `/抽卡历史 [页码] [每页数量]` | 分页查询本人历史记录，默认 `1 10` |
+| `/抽卡统计` | 查询本人累计统计（总抽数、累计积分、SSR / UR 数量等） |
+| `/抽卡帮助` | 查看帮助文本（别名：`抽卡help`、`carddraw_help`） |
 
-```
-用户: 如果明天不下雨
-      ↓ 插件判断：未完整，等待...
-      
-用户: 我们去爬山吧
-      ↓ 插件判断：完整，发送给 LLM
-      
-LLM:  好的！如果明天天气好，我们可以一起去爬山~
-```
+### 管理员命令（仅 `admin_qq_list` 内 QQ 可用）
 
-### 场景 2：用户补充内容（启用 cancel_on_new_message）
+| 命令 | 说明 |
+| --- | --- |
+| `/卡池列表` | 查看全部卡池的 ID、Key、启用状态与单抽/十连开关 |
+| `/重置抽卡次数 <QQ号> <卡池ID>` | 请求后端重置指定 QQ 在指定卡池的当日次数 |
 
-```
-用户: 如果明天不下雨
-      ↓ 判断：未完整，缓存
+## 输出示例
 
-用户: 我们去爬山吧
-      ↓ 判断：完整，发送给 LLM
-      ⏳ LLM 正在思考中...
-
-用户: 顺便带上野餐垫
-      ↓ 检测到：用户在等待回复时又发消息
-      ❌ 取消 LLM 当前回复
-      ✅ 将新消息加入缓存，继续等待
-
-用户: 和水果
-      ↓ 判断：完整，合并所有内容发送
-      
-LLM:  好的！明天天气好的话，我们去爬山，我会准备野餐垫和水果~
-```
-
-### 场景 3：超时处理
-
-```
-用户: 虽然今天很累
-      ↓ 等待 30 秒...
-      
-      ↓ 超时，自动发送
-      
-LLM:  虽然今天很累，但还是要注意休息哦！
-```
-
----
-
-## 🔧 模型说明
-
-插件提供两种模型，均托管在 [ModelScope](https://modelscope.cn/)：
-
-| 模型 | 大小 | 速度 | 准确率 | 推荐场景 |
-|------|------|------|--------|---------|
-| **Small** | ~10MB | ⚡⚡⚡ | ~90% | 日常使用，CPU 环境 |
-| **Normal** | ~100MB | ⚡⚡ | ~95% | 高准确度需求 |
-
-### 模型仓库
-
-- Small: [advent259141/astrbot_debouncer_small](https://modelscope.cn/models/advent259141/astrbot_debouncer_small)
-- Normal: [advent259141/astrbot_debouncer_normal](https://modelscope.cn/models/advent259141/astrbot_debouncer_normal)
-
-首次使用会自动下载，无需手动操作。
-
----
-
-## 📊 训练数据
-
-模型基于以下类型的中文句子训练：
-
-| 标签 | 说明 | 示例 |
-|------|------|------|
-| **0 (WAIT)** | 句子未完整 | `"如果明天不下雨"` |
-| **1 (SEND)** | 句子已完整 | `"如果明天不下雨我们去爬山"` |
-
-涵盖常见的复句结构：
-- 条件句：`如果...`、`假如...`
-- 转折句：`虽然...`、`尽管...`
-- 因果句：`因为...`、`由于...`
-- 递进句：`其实...`、`也就是说...`
-
----
-
-## 🐛 调试
-
-开启调试模式后，日志会输出详细信息：
-
-```
-[防抖] 文本: '如果明天不下雨' | 完整概率: 0.2341 | 判定: 等待
-[防抖] 文本: '如果明天不下雨 我们去爬山' | 完整概率: 0.8762 | 判定: 发送
-[防抖] 完整发送: 如果明天不下雨 我们去爬山
-```
-
----
-
-## ❓ 常见问题
-
-### Q1: 插件会拦截其他插件的 LLM 调用吗？
-
-**A**: 不会。插件只拦截用户发送消息触发的 LLM 请求，其他插件通过 `context.llm_generate()` 直接调用 LLM 不受影响。
-
-### Q2: 模型下载失败怎么办？
-
-**A**: 
-1. 检查网络连接
-2. 手动下载模型文件放入 `models/` 目录
-3. 或切换到 `small` 模型（体积更小）
-
-### Q3: 如何调整判断的严格程度？
-
-**A**: 修改 `send_threshold`：
-- 值越大越严格（需要更高的完整概率）
-- 建议范围：0.8 - 0.9
-
-### Q4: 插件会影响性能吗？
-
-**A**: 影响极小。ONNX 推理在 CPU 上耗时 < 10ms，可忽略不计。
-
-### Q5: 什么是"取消回复"功能？
-
-**A**: 当用户在等待 LLM 回复时又发送新消息，插件会：
-- **启用时**：自动取消当前 LLM 回复，合并新消息后重新发送
-- **禁用时**：不取消回复，新消息会作为独立消息处理
-
-建议保持启用，以获得更好的对话体验。
-
-### Q6: 多个 QQ 机器人 + NapCat 部署时为什么会出现消息串流？
-
-**A**: 旧版本插件内部状态只使用 AstrBot 的 `session_id` 作为唯一键。在同时部署多个 QQ 机器人时，NapCat 场景下不同机器人面对同一个用户或同一个群聊，可能产生相同的 `session_id`。这会让多个机器人的防抖缓存、等待状态、LLM 响应丢弃标记共用同一份状态，表现为：
-- 给机器人 A 发送消息后，合并后的消息或回复可能沿用机器人 B 的事件上下文
-- A/B 两个机器人的消息被错误合并
-- 某个机器人的旧回复被另一个机器人的新消息误标记为需要丢弃
-
-已修复：插件内部不再直接用原始 `session_id` 区分状态，而是生成带平台实例和机器人身份的作用域键：
+抽卡成功：
 
 ```text
-platform_id:self_id:group_id:sender_id:session_id
+【每日抽卡】
+QQ：123456789
+卡池：常驻池
+模式：十连
+结果：
+1. 星穹旅人 SSR
+2. 巡星学徒 SR
+本次积分：34
+今日单抽：0/1
+今日十连：1/1
+记录号：20240501-000123
 ```
 
-其中 `platform_id` 是 AstrBot 中的平台实例 ID，例如 `QQ-6097`，`self_id` 是当前机器人账号，`sender_id` 是消息发送者，`group_id` 用于区分群聊上下文。这样即使多个 NapCat 机器人使用同一个适配器名称 `aiocqhttp`，收到来自同一用户或同一群的消息，也会被隔离到不同的防抖状态中；同一群里的其他用户或其他 bot 消息也不会被错误拼接进当前用户的防抖缓存。
+今日记录查询：
 
-本次修复还对伪造消息和待取消消息做了同样的隔离：内部消息键改为 `scoped_session_id:message_id`，避免不同机器人产生相同 `message_id` 时互相影响。
-
-另外，插件会在已有防抖等待或 LLM 处理中时捕获同一作用域下的非唤醒后续消息。例如用户先 `@机器人 你到底`，随后直接发送 `为什么又不行了`，第二条消息虽然不会单独唤醒 LLM，也会被加入同一个 buffer。捕获后会重新判断完整性：达到 `send_threshold` 就立即合并发送；未达到阈值则重置 `timeout_seconds` 倒计时，直到用户停顿超时后再发送。
-
-如果 AstrBot 开启了“引用原文”，拼接后的伪造事件会复用 buffer 中最后一条真实消息的 `message_id`。因此机器人回复时会引用最后一条用户消息，而不是引用第一条被防抖拦截的消息或伪造消息。
-
-注意：如果你同时安装了原版 `astrbot_plugin_debounce` 和本修复版，请在 AstrBot 中禁用原版插件，只保留 `astrbot_plugin_debounce_multibot_fix`。原版仍使用旧的状态和伪造事件逻辑，继续启用会再次引入串台风险。
-
----
-
-## 🔄 取消消息机制详解
-
-当启用 `cancel_on_new_message` 时，插件会在 LLM 处理期间检测新消息，并智能取消过时的回复。
-
-### 工作原理
-
-#### 核心钩子
-
-插件使用三个 AstrBot 事件钩子协同工作：
-
-| 钩子 | 执行时机 | 作用 |
-|------|----------|------|
-| `on_waiting_llm_request` | session lock **之前** | 检测新消息到达，标记旧响应需丢弃 |
-| `on_llm_request` | session lock **之后** | BERT 判断完整性，管理缓冲区 |
-| `on_llm_response` | LLM 响应返回后 | 检查是否需要丢弃响应 |
-
-#### 关键时序
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  消息1: "小面包小面包"                                            │
-├─────────────────────────────────────────────────────────────────┤
-│  T1: on_waiting_llm_request(消息1)                                  │
-│      → 无旧任务，跳过                                             │
-│                                                                 │
-│  T2: on_llm_request(消息1)                                       │
-│      → BERT 判断: 0.04 (未完整)                                   │
-│      → buffer = ["小面包小面包"]                                  │
-│      → event.stop_event() 阻止发送                               │
-│      → 启动 30秒 监控任务                                         │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓ 3秒后
-┌─────────────────────────────────────────────────────────────────┐
-│  消息2: "我想你了"                                               │
-├─────────────────────────────────────────────────────────────────┤
-│  T3: on_waiting_llm_request(消息2)                                  │
-│      → 取消监控任务 ✅                                            │
-│                                                                 │
-│  T4: on_llm_request(消息2)                                       │
-│      → 检测到 waiting_sessions 有消息1                            │
-│      → buffer = ["小面包小面包", "我想你了"]                       │
-│      → BERT 判断: 0.97 (完整)                                     │
-│      → req.prompt = "小面包小面包 我想你了"                        │
-│      → pending_llm_sessions.add(scoped_session_id)                 │
-│      → 发送 LLM 请求 🚀                                           │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓ 2秒后 (LLM 还在处理中)
-┌─────────────────────────────────────────────────────────────────┐
-│  消息3: "想和你聊聊天"                                           │
-├─────────────────────────────────────────────────────────────────┤
-│  T5: on_waiting_llm_request(消息3) ⚡ 在 session lock 之前执行！   │
-│      → 检测到 pending_llm_sessions 有正在处理的请求               │
-│      → discard_next_response.add(scoped_session_id) 标记丢弃 🎯   │
-│      → 恢复 "小面包小面包 我想你了" 到 buffer                      │
-│      → buffer = ["小面包小面包 我想你了"]                          │
-│                                                                 │
-│  T6: [被 session lock 阻塞，等待消息2的LLM完成...]                 │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓ 8秒后 (LLM 处理完成)
-┌─────────────────────────────────────────────────────────────────┐
-│  消息2 的 LLM 响应返回                                           │
-├─────────────────────────────────────────────────────────────────┤
-│  T7: on_llm_response(消息2的响应)                                 │
-│      → 检测到 discard_next_response 包含此会话                    │
-│      → resp.completion_text = "" 清空响应 🚫                     │
-│      → 用户看不到这个过时的回复 ✅                                 │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓ session lock 释放
-┌─────────────────────────────────────────────────────────────────┐
-│  消息3 继续处理                                                  │
-├─────────────────────────────────────────────────────────────────┤
-│  T8: on_llm_request(消息3)                                       │
-│      → buffer = ["小面包小面包 我想你了", "想和你聊聊天"]          │
-│      → BERT 判断: 0.95 (完整)                                     │
-│      → req.prompt = "小面包小面包 我想你了 想和你聊聊天"           │
-│      → 发送 LLM 请求 🚀                                           │
-│                                                                 │
-│  T9: on_llm_response(消息3的响应)                                 │
-│      → 正常返回 ✅                                                │
-│      → 用户看到完整的回复 🎉                                      │
-└─────────────────────────────────────────────────────────────────┘
+```text
+【今日抽卡记录】
+卡池：常驻池
+今日单抽：1/1
+今日十连：0/1
+最近结果：
+1. 星穹旅人 SSR
 ```
 
-### 为什么需要 `on_waiting_llm_request`？
+累计统计：
 
-AstrBot 使用 **session lock** 防止同一会话的并发 LLM 请求。这意味着：
-
-```
-消息2 正在调用 LLM
-    ↓
-消息3 到达
-    ↓
-消息3 的 on_llm_request 被 session lock 阻塞
-    ↓
-等待消息2 的 LLM 完成后才能执行
-    ↓
-此时检测"新消息"已经太晚了！
+```text
+【累计统计】
+QQ：123456789
+昵称：未记录
+总抽卡次数：12
+单抽次数：4
+十连次数：8
+累计积分：256
+SSR 数量：3
+UR 数量：0
 ```
 
-**解决方案**：`on_waiting_llm_request` 钩子在 **session lock 之前** 执行，让我们能在第一时间检测到新消息并标记旧响应需要丢弃。
+## 云端后端
 
-### 状态管理
+插件通过 HTTP 调用配套的 FastAPI 后端，接口前缀为 `/api/daily-carddraw`：
 
-| 状态集合 | 类型 | 作用 |
-|----------|------|------|
-| `buffers` | `Dict[scoped_session_id, MessageBuffer]` | 存储未完成的消息 |
-| `waiting_sessions` | `Set[scoped_session_id]` | 标记正在等待更多消息的会话 |
-| `pending_llm_sessions` | `Set[scoped_session_id]` | 记录正在处理 LLM 的会话 |
-| `discard_next_response` | `Set[scoped_session_id]` | 标记需要丢弃下一个响应的会话 |
-| `monitor_tasks` | `Dict[scoped_session_id, Task]` | 超时监控任务 |
-| `waiting_msg_ids` | `Dict[scoped_session_id, scoped_msg_id]` | 记录正在等待 session lock 的消息 |
-| `should_cancel_msg_ids` | `Set[scoped_msg_id]` | 标记进入 LLM 请求后应取消的旧消息 |
-| `skip_debounce_msg_ids` | `Set[scoped_msg_id]` | 跳过防抖的伪造消息 ID |
+| 接口 | 方法 | 用途 |
+| --- | --- | --- |
+| `/api/daily-carddraw/draw` | POST | 执行抽卡 |
+| `/api/daily-carddraw/today` | GET | 今日记录 |
+| `/api/daily-carddraw/history` | GET | 历史记录（分页） |
+| `/api/daily-carddraw/stats` | GET | 累计统计 |
+| `/api/daily-carddraw/admin/pools` | GET | 卡池列表 |
+| `/api/daily-carddraw/admin/reset-quota` | POST | 重置当日次数 |
+| `/api/daily-carddraw/admin/user-records` | GET | 指定 QQ 的抽卡记录 |
 
-`scoped_session_id` 的格式为 `platform_id:self_id:group_id:sender_id:session_id`。这能隔离同一 AstrBot 实例下的多个 QQ/NapCat 机器人，也能隔离同群不同发送者，避免不匹配的 bot 或用户共用防抖状态。超时后伪造事件也会使用原事件的 `platform_id` 提交，避免只传 `aiocqhttp` 这类适配器名称时被 AstrBot 路由到第一个同名平台实例。
+后端部署方式见 `backend/README.md`，建表脚本为 `backend/sql/001_init_daily_carddraw.sql`。
 
-`on_followup_message` 会监听普通消息，但只在 `scoped_session_id` 已经存在于 `waiting_sessions` 或 `pending_llm_sessions` 时生效，并且会跳过已经唤醒的消息，避免和 `on_llm_request` 重复处理。会话一旦被某个 bot 接住，后续消息只会由同一个 bot 继续拼接，其他 bot 会直接忽略。
+## 常见提示与排查
 
-### 消息恢复机制
+| 提示 | 原因与处理 |
+| --- | --- |
+| 未配置 `api_base_url`，当前无法请求云端后端。 | 在插件配置里填写后端地址 |
+| 插件当前已关闭。 | `plugin_enabled` 为 `false` |
+| 插件当前未开启私聊使用。 / 群聊使用 | 对应的 `enable_private_usage` / `enable_group_usage` 为 `false` |
+| 未能识别当前消息对应的 QQ 号。 | 平台适配器未提供发送者 ID |
+| 你没有权限使用管理命令。 | 当前 QQ 不在 `admin_qq_list` 中 |
+| 请求云端接口失败：… | 网络不可达或超时，可调大 `request_timeout_seconds` |
+| 云端接口返回异常状态码：… | 后端报错或 Token 不正确 |
 
-当旧响应被取消时，插件会将原消息内容恢复到 buffer：
+## 工程结构
 
-```python
-# 在 on_waiting_llm_request 中
-if session_id in self.pending_llm_sessions:
-    self.discard_next_response.add(session_id)
-
-    # 当前实现不清空 buffer，旧消息仍保留在 buffer 中，可继续与新消息合并
-    # buffer 变为 ["小面包 我想你了", "想和你聊聊天"]
+```text
+astrbot_plugin_dailycarddraw/
+  main.py                 # 插件入口：命令注册、参数解析、权限结果返回
+  metadata.yaml           # 插件元信息
+  _conf_schema.json       # 插件配置项定义
+  requirements.txt        # 插件依赖（httpx）
+  app/
+    controllers/          # 命令意图识别、权限校验（draw / query / admin）
+    services/             # 抽卡、查询、卡池业务服务
+    models/               # DTO、枚举、视图模型（CommandContext）
+    infrastructure/       # API 客户端、配置读取、管理员鉴权、时间工具
+    utils/                # 统一文本渲染 message_formatter
+  backend/                # 配套 FastAPI 云端后端骨架
+    app/                  # controllers / services / repositories / models
+    sql/                  # MySQL 建表脚本
+  docs/                   # 设计与规划文档
 ```
 
-这确保用户发送的所有内容都不会丢失。
+设计上刻意把「命令解析」与「文本渲染」分开：后续要把纯文本结果改成图片卡片或富文本，只需替换 `app/utils/message_formatter.py`，不必改动业务流程。
 
----
+## 项目状态与限制
 
-## 🤝 贡献
+- 插件侧命令、服务层与后端客户端已接通，云端后端目前是骨架版：路由与返回结构已固定，仓储层仍使用内存假数据，尚未接入真实 MySQL 查询
+- 因此**必须提供可用的后端 API**，命令才会返回真实抽卡数据
+- 管理员卡池维护（新建/修改卡池、卡牌与权重配置）在后端接口落地前尚未开放命令入口
+- 保底机制、UP 池、卡牌图鉴、群专属活动池等属于后续阶段规划
 
-欢迎提交 Issue 和 Pull Request！
+## 相关文档
 
+- `docs/00_项目总览.md`：目标、方向与交付范围
+- `docs/01_需求与范围.md`：功能边界
+- `docs/02_技术架构.md`：插件侧与云端侧分层
+- `docs/03_数据模型与云端接口.md`：表结构与 API 草案
+- `docs/04_命令与管理接口.md`：命令约定与回复模板
+- `docs/05_开发顺序.md`：实施顺序与验收重点
+- `backend/README.md`：后端部署与接口说明
 
+## 许可证
 
-## 📄 许可证
-
-[Apache License 2.0](LICENSE)
-
-
-
-**如果这个插件对你有帮助，欢迎给个 ⭐ Star！**
-
-</div>
-
-
-
-
+许可证见仓库根目录 `LICENSE`。

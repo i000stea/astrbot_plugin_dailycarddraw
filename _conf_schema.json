@@ -1,40 +1,51 @@
 {
-    "model_type": {
-        "type": "string",
-        "description": "选择使用的模型类型",
-        "options": ["small", "normal"],
-        "default": "small",
-        "hint": "small: 轻量模型，速度快 | normal: 标准模型，准确度更高"
+    "plugin_enabled": {
+        "type": "bool",
+        "description": "是否启用每日抽卡插件",
+        "default": true,
+        "hint": "关闭后所有抽卡、查询和管理命令都不会生效。"
     },
-    "send_threshold": {
+    "api_base_url": {
+        "type": "string",
+        "description": "云端后端 API 地址",
+        "default": "",
+        "hint": "例如：https://your-domain.com。插件会在其后拼接 /api/daily-carddraw/* 接口。"
+    },
+    "api_token": {
+        "type": "string",
+        "description": "云端后端鉴权 Token",
+        "default": "",
+        "secret": true,
+        "hint": "如果你的后端需要鉴权，请在此填写 Bearer Token。"
+    },
+    "default_pool_key": {
+        "type": "string",
+        "description": "默认卡池 Key",
+        "default": "normal_pool",
+        "hint": "用户执行 /抽卡 时，默认使用该卡池。"
+    },
+    "request_timeout_seconds": {
         "type": "float",
-        "description": "判断句子完整的概率阈值",
-        "default": 0.8,
-        "hint": "取值范围 0-1，越高则越严格（需要更高的完整概率才会发送）"
-    },
-    "timeout_seconds": {
-        "type": "int",
-        "description": "消息缓存超时时间（秒）",
+        "description": "请求后端超时时间（秒）",
         "default": 10,
-        "hint": "超过此时间后，即使句子未完整也会自动发送。设为 0 表示不超时"
+        "hint": "插件访问云端后端时的超时时间。"
     },
-    "enabled": {
+    "admin_qq_list": {
+        "type": "list",
+        "description": "管理员 QQ 白名单",
+        "default": [],
+        "hint": "列表中的 QQ 可使用 /卡池列表、/重置抽卡次数 等管理命令。"
+    },
+    "enable_group_usage": {
         "type": "bool",
-        "description": "是否启用消息防抖功能",
+        "description": "是否允许群聊使用",
         "default": true,
-        "hint": "关闭后插件将不拦截任何消息"
+        "hint": "关闭后插件仅允许私聊中触发。"
     },
-    "usage_scope": {
-        "type": "string",
-        "description": "使用场景",
-        "options": ["both", "group", "private"],
-        "default": "both",
-        "hint": "both: 群聊和私聊都使用 | group: 仅群聊使用 | private: 仅私聊使用"
-    },
-    "cancel_on_new_message": {
+    "enable_private_usage": {
         "type": "bool",
-        "description": "LLM 回复前收到新消息时取消回复",
+        "description": "是否允许私聊使用",
         "default": true,
-        "hint": "开启后，若用户在等待 LLM 回复时又发送消息，会取消当前回复并合并新消息"
+        "hint": "关闭后插件仅允许群聊中触发。"
     }
 }

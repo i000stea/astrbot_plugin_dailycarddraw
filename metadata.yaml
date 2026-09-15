@@ -1,9 +1,22 @@
-name: astrbot_plugin_debounce_multibot_fix
-description: 消息防抖插件 - 使用微调过的模型判断用户是否说完一句话，合并连续发送的多条消息再提交，避免频繁调用 LLM
+name: astrbot_plugin_dailycarddraw
+display_name: 每日抽卡插件
 author: Jason.Joestar
-version: 1.1.6
-display_name: 消息防抖 - 多机器人修复版
-repo: https://github.com/i000stea/astrbot_plugin_debounce_multibot_fix
+version: 0.1.0
+repo: https://github.com/i000stea/astrbot_plugin_dailycarddraw
+short_desc: 面向 QQ 号管理的每日抽卡与卡池管理插件
+desc: |
+  面向 QQ 号管理的 AstrBot 每日抽卡插件。
 
+  当前版本已完成插件侧最小 MVC 骨架，包含：
+  - 单抽 / 十连命令入口
+  - 今日记录、历史记录、累计统计查询
+  - 管理员卡池列表与重置次数命令
+  - 面向云端 MySQL API 的客户端与服务层封装
 
+  后续将继续补齐云端后端、数据库建表与完整管理接口。
+astrbot_version: ">=4.16,<5"
+support_platforms:
+  - aiocqhttp
+  - qq_official
+  - qq_official_webhook
 
