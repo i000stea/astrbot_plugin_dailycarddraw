@@ -209,6 +209,23 @@ UR 数量：0
 
 > 提示：群里同时挂了多个机器人 / 防抖、多机器人路由类插件时，也要确认这条消息最终是被本插件所在的那个机器人实例处理的（日志里对应 `[QQ-xxxxx(aiocqhttp)]` 那一行）。
 
+### 诊断日志（`debug_log_enabled`，默认开启）
+
+插件内置了排查「命令没反应」用的诊断日志，开关是配置项 `debug_log_enabled`（默认开）。开启后日志里会出现 `【抽卡诊断】` 开头的内容，分别在三个位置打印：
+
+| 位置 | 内容 |
+| --- | --- |
+| 插件加载时（`__init__` / 启动时的 `on_astrbot_loaded`） | 配置快照：`plugin_enabled`、群聊/私聊开关、`api_base_url` 与 `api_token` 是否已配置、默认卡池、超时、管理员数量；注册表快照（插件名 / `activated` / 每个 handler 的事件类型、`enabled`、过滤器与指令名） |
+| 每条指令进入处理函数时 | `命中指令 /抽卡：...`，附带解析出的参数与 QQ 号（证明 handler 真的被执行了） |
+| 收到 LLM 请求时（`on_llm_request` 钩子） | ① 事件完整结构（umo、平台、消息类型、发送者、`message_str`、消息链各消息段的字段、`is_wake` / `is_at_or_wake_command` / `plugins_name`、原始 `raw_message`）；② **指令匹配模拟**（按 `CommandFilter` 的规则逐条判断「本来能不能匹配上」）；③ 注册表快照；④ 会话级 `session_plugin_config` 与全局 `inactivated_plugins` / `alter_cmd` / `plugin_set`；⑤ 本次 LLM 请求的 prompt 与 system_prompt 长度 |
+
+判断方法很简单：
+
+- 能看到第 3 条，说明本插件已经通过了「插件已激活 + 在 `plugin_set` 白名单里」两道过滤（钩子和指令 handler 走同一套注册表过滤），问题只可能在唤醒阶段的指令过滤或会话级插件开关上——第 2、4 条会直接给出答案；
+- 看不到第 3 条，说明插件在更前面就被过滤掉了，那就看第 1 条里的 `activated` / `name` 与日志里的 `enabled_plugins_name` 是否对得上。
+
+排查完成后把这个开关关掉即可，不影响任何功能。
+
 ## 工程结构
 
 ```text

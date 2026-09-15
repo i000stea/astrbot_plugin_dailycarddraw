@@ -42,3 +42,7 @@ class ConfigHelper:
         if not isinstance(values, list):
             return []
         return [str(item).strip() for item in values if str(item).strip()]
+
+    def is_debug_log_enabled(self) -> bool:
+        """是否输出【抽卡诊断】日志（排查「命令没反应」时使用）。"""
+        return bool(self.config.get("debug_log_enabled", True))

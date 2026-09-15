@@ -47,5 +47,11 @@
         "description": "是否允许私聊使用",
         "default": true,
         "hint": "关闭后插件仅允许群聊中触发。"
+    },
+    "debug_log_enabled": {
+        "type": "bool",
+        "description": "诊断日志（排查「命令没反应」时打开）",
+        "default": true,
+        "hint": "开启后日志里会出现【抽卡诊断】开头的详细内容：收到的消息完整结构、指令匹配模拟、插件注册表快照（插件名/activated/handler 与过滤器）、会话级与全局插件开关。排查完成后建议关闭。"
     }
 }
