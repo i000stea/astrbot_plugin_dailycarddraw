@@ -197,9 +197,9 @@ UR 数量：0
    - **全局**：日志里 `enabled_plugins_name: [...]` 就是当前生效的插件白名单（取 AstrBot 的 `plugin_set` 配置）。列表里没有 `astrbot_plugin_dailycarddraw` 时，即使代码正常，命令也不会被分发。
    - **会话级**：AstrBot 支持在单个会话（群 / 私聊）里单独停用某个插件。被会话禁用时，处理函数会被静默过滤掉，日志（DEBUG）里会出现 `Plugin astrbot_plugin_dailycarddraw is disabled in session ...; skipping handler draw.`。到 WebUI 对应会话的插件开关里重新启用即可。
 4. **消息是不是「@ 提及 + 指令」的格式**。AstrBot 的指令匹配要求 `message_str` 以指令名开头，而 aiocqhttp 适配器会把提及按自己的规则拼进 `message_str`：
-   - `@机器人 /抽卡`：AstrBot ≥ 4.28 的适配器会把**本机器人自己**的那个提及丢掉、并对文本 `strip()`，`message_str` 就是 `/抽卡`，原生匹配正常；较早版本会把提及也写进 `message_str`，此时由下面的兜底接管；
-   - `@别人 @机器人 /抽卡`，或指令前面还出现了别的提及 → `message_str` 变成 ` @别人(qq) /抽卡`，原生匹配不到，由插件的 `command_after_mention` 正则兜底接管（DEBUG 日志里会打印「指令前带 @ 提及，已走兜底匹配」）。
-   兜底只在 `event.is_at_or_wake_command` 为真（这条消息确实是发给本机器人的）时生效，所以不会在群里 @ 了别的机器人时抢答。
+   - `@机器人 /抽卡`：AstrBot 会把**本机器人自己**的那个提及丢掉，但**唤醒前缀是否被剥掉取决于全局配置 `wake_prefix`**——诊断日志第 ① 段会把 `message_str` 原样打出来，如果它仍然带着 `/`，说明 `wake_prefix` 不是 `/`（或为空串），此时**整个 AstrBot 的 `/指令` 都匹配不上**，请到全局配置里把唤醒前缀改回 `/`；插件侧的兜底也能认出这种带前缀的 `/抽卡`，所以改不改配置都能用；
+   - `@别人 @机器人 /抽卡`，或指令前面还出现了别的提及 → `message_str` 变成 ` @别人(qq) /抽卡`，原生匹配不到，由插件的 `command_after_mention` 正则兜底接管。
+   兜底只在 `event.is_at_or_wake_command` 为真（这条消息确实是发给本机器人的）时生效，且**原生过滤器能匹配时一律不接管**，所以不会重复回复、也不会在群里 @ 了别的机器人时抢答。
 5. **命令处理函数是否被激活**。把日志级别开到 DEBUG 后发一次 `/抽卡`，应能看到：
    - `plugin -> astrbot_plugin_dailycarddraw - draw`
 
@@ -217,7 +217,7 @@ UR 数量：0
 | --- | --- |
 | 插件加载时（`__init__` / 启动时的 `on_astrbot_loaded`） | 配置快照：`plugin_enabled`、群聊/私聊开关、`api_base_url` 与 `api_token` 是否已配置、默认卡池、超时、管理员数量；注册表快照（插件名 / `activated` / 每个 handler 的事件类型、`enabled`、过滤器与指令名） |
 | 每条指令进入处理函数时 | `命中指令 /抽卡：...`，附带解析出的参数与 QQ 号（证明 handler 真的被执行了） |
-| 收到 LLM 请求时（`on_llm_request` 钩子） | ① 事件完整结构（umo、平台、消息类型、发送者、`message_str`、消息链各消息段的字段、`is_wake` / `is_at_or_wake_command` / `plugins_name`、原始 `raw_message`）；② **指令匹配模拟**（按 `CommandFilter` 的规则逐条判断「本来能不能匹配上」）；③ 注册表快照；④ 会话级 `session_plugin_config` 与全局 `inactivated_plugins` / `alter_cmd` / `plugin_set`；⑤ 本次 LLM 请求的 prompt 与 system_prompt 长度 |
+| 收到 LLM 请求时（`on_llm_request` 钩子） | ① 事件完整结构（umo、平台、消息类型、发送者、`message_str`、消息链各消息段的字段、`is_wake` / `is_at_or_wake_command` / `plugins_name`、原始 `raw_message`）；② **指令匹配模拟**（按 `CommandFilter` 的规则逐条判断「本来能不能匹配上」）；③ 注册表快照；④ 会话级 `session_plugin_config` 与全局 `inactivated_plugins` / `alter_cmd` / `plugin_set`；⑤ 本次 LLM 请求的 prompt 与 system_prompt 长度；⑥ 影响指令匹配的全局配置（**`wake_prefix`**、`disable_builtin_commands`、`admins_id`、`platform_settings` 里的几个开关、`provider_settings.enable`） |
 
 判断方法很简单：
 

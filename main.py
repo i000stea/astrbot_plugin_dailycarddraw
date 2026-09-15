@@ -8,10 +8,14 @@ AstrBot 的管道是「按优先级依次调用所有被唤醒的 handler，再�
 大模型各自回答一遍。这里的做法与 AstrBot 内置插件一致：先 `yield` 让回复进入
 RespondStage 正常发送（保留引用/At 等发送装饰），发送后再终止事件传播。
 
-约定二：指令前面带 @ 提及时走 `command_after_mention` 兜底。
-AstrBot 的指令过滤器要求 message_str 以指令名开头，而 aiocqhttp 适配器会把「非本机器人」
-的提及以 ` @昵称(qq) ` 的形式拼进 message_str，因此「@A @机器人 /抽卡」这类消息匹配不到
-`/抽卡`（现象：命令没反应，消息被丢给大模型）。
+约定二：指令前面多出内容时走 `command_after_mention` 兜底。
+AstrBot 原生指令过滤器要求 message_str 以指令名开头，两种情况会不满足：
+  1. 「@A @机器人 /抽卡」——aiocqhttp 会把「非本机器人」的提及以 ` @昵称(qq) ` 的
+     形式拼进 message_str；
+  2. `/抽卡帮助` 这种带唤醒前缀的消息，如果全局配置 `wake_prefix` 不是 `/`（或为空串），
+     waking_check 不会剥掉前缀，前缀就留在 message_str 里 —— 这时整个 AstrBot 的
+     `/指令` 都匹配不上。
+这两种都由兜底正则接管，且只在原生过滤器确实匹配不上时才生效（不会重复回复）。
 
 约定三：诊断日志（`debug_log_enabled`，默认开启）。
 开启后，插件会在以下位置打印 `【抽卡诊断】` 开头的日志：
@@ -51,12 +55,19 @@ _COMMAND_NAMES = (
     "抽卡",
 )
 
-# 「@提及 排在指令前面」的兜底匹配：提及必须在最前面，提及与指令之间必须有空白
-# （aiocqhttp 会把非本机器人的提及写成 ` @昵称(qq) `，唤醒前缀跟在后面），
-# 指令后面只允许跟空格分隔的参数或直接结束，避免把普通聊天误判成指令。
+# 兜底匹配：AstrBot 原生指令过滤器要求 message_str 直接以指令名开头，下面两种情况下
+# message_str 前面会多出东西，导致原生匹配失败（现象：命令没反应，消息被丢给大模型）：
+#   1. 群里「@A @机器人 /抽卡」：aiocqhttp 会把非本机器人的提及写成 ` @昵称(qq) `；
+#   2. 消息以唤醒前缀开头（如 `/抽卡帮助`）而 waking_check 没有剥掉它——例如全局配置
+#      里的 wake_prefix 不是 `/`（或为空串）时，前缀分支不会执行，前缀就一直留在
+#      message_str 里，这时整个 AstrBot 的 `/指令` 都匹配不上。
+# 匹配到的指令与参数分别放在 command / args 组里。
 # (?s) 让 . 可以跨行，与插件里 re.compile 的结果保持一致。
 _MENTION_COMMAND_PATTERN = (
-    r"(?s)^\s*(?:@|\[At:).+?(?:\s+/\s*|\s+)"
+    r"(?s)^\s*(?:"
+    r"(?:@|\[At:).+?(?:\s*/\s*|\s+)"  # 情况 1：前面有其它提及（后面可跟唤醒前缀）
+    r"|[/#!！~～.。]{1,2}\s*"  # 情况 2：残留在最前面的唤醒前缀
+    r")"
     r"(?P<command>" + "|".join(_COMMAND_NAMES) + r")"
     r"(?:\s+(?P<args>.*))?$"
 )
@@ -335,6 +346,38 @@ class DailyCardDrawPlugin(Star):
             lines.append(f"  {key}={_truncate(value, 500)}")
         return "\n".join(lines)
 
+    def _dump_global_settings(self, event: AstrMessageEvent) -> str:
+        """打印影响「指令能否匹配」的全局配置（唤醒前缀等）。"""
+        try:
+            config = self.context.get_config(umo=event.unified_msg_origin)
+        except Exception:  # noqa: BLE001
+            try:
+                config = self.context.get_config()
+            except Exception as exc:  # noqa: BLE001
+                return f"  （读取全局配置失败：{exc!r}）"
+
+        platform_settings = config.get("platform_settings", {})
+        if not isinstance(platform_settings, dict):
+            platform_settings = {}
+        provider_settings = config.get("provider_settings", {})
+        if not isinstance(provider_settings, dict):
+            provider_settings = {}
+
+        return "\n".join(
+            [
+                f"  wake_prefix={config.get('wake_prefix')!r}"
+                "   ← waking_check 用它剥掉指令前的 / 等前缀，不是 '/' 时 /指令 全都匹配不上",
+                f"  disable_builtin_commands={config.get('disable_builtin_commands')!r}",
+                f"  admins_id={config.get('admins_id')!r}",
+                "  platform_settings.friend_message_needs_wake_prefix="
+                f"{platform_settings.get('friend_message_needs_wake_prefix')!r}",
+                f"  platform_settings.unique_session={platform_settings.get('unique_session')!r}",
+                "  platform_settings.ignore_bot_self_message="
+                f"{platform_settings.get('ignore_bot_self_message')!r}",
+                f"  provider_settings.enable={provider_settings.get('enable')!r}",
+            ]
+        )
+
     def _log_registry_snapshot(self, reason: str) -> None:
         """打印注册表快照。"""
         if not self.config_helper.is_debug_log_enabled():
@@ -380,6 +423,10 @@ class DailyCardDrawPlugin(Star):
             )
         except Exception as exc:  # noqa: BLE001
             sections.append(f"【抽卡诊断】⑤ LLM 请求信息打印失败：{exc!r}")
+        try:
+            sections.append("【抽卡诊断】⑥ 影响指令匹配的全局配置\n" + self._dump_global_settings(event))
+        except Exception as exc:  # noqa: BLE001
+            sections.append(f"【抽卡诊断】⑥ 全局配置打印失败：{exc!r}")
 
         logger.info("\n".join(sections))
 
@@ -537,18 +584,26 @@ class DailyCardDrawPlugin(Star):
 
     @filter.regex(_MENTION_COMMAND_PATTERN)
     async def command_after_mention(self, event: AstrMessageEvent):
-        """@ 提及排在指令前面时的兜底入口。
+        """指令前面多出提及或唤醒前缀时的兜底入口。
 
-        AstrBot 的指令过滤器要求 message_str 以指令名开头。在群里「@A @机器人 /抽卡」这种
-        消息中，AstrBot 会把不是本机器人自己的提及写进 message_str（aiocqhttp 的格式是
-        ` @昵称(qq) `），于是 `/抽卡` 匹配不到，命令没有任何回复、消息直接落到大模型。
+        原生指令过滤器要求 message_str 以指令名开头，以下情况会匹配不到，于是命令没有
+        任何回复、消息直接落到大模型：
+          - 「@A @机器人 /抽卡」：AstrBot 会把不是本机器人自己的提及写进 message_str
+            （aiocqhttp 的格式是 ` @昵称(qq) `）；
+          - 「/抽卡帮助」：全局配置 `wake_prefix` 不是 `/`（或为空串）时，waking_check
+            不会剥掉前缀，`/` 就一直留在 message_str 里。
 
-        这里把前面的提及剥掉，再交给同一套命令处理函数：参数解析规则一致，回复后同样
-        `event.stop_event()`，所以不会出现第二条回复。
+        这里把前面的提及/前缀剥掉，再交给同一套命令处理函数：参数解析规则一致，回复后
+        同样 `event.stop_event()`，所以不会出现第二条回复。
         """
-        # 只在消息确实是发给本机器人的时候兜底（被 @ / 被引用回复 / 带唤醒前缀），
+        # 只在消息确实是发给本机器人的时候兜底（被 @ / 被引用回复 / 带唤醒前缀 / 私聊），
         # 避免群里 @ 了别的机器人时本机器人抢答，造成多机器人重复回答。
         if not event.is_at_or_wake_command:
+            return
+
+        # 原生过滤器能匹配时交给它处理（它在注册表里排在前面，正常情况已经 stop_event 了），
+        # 这里再判一次，确保任何情况下都不会重复回复。
+        if self._primary_command_matches(event):
             return
 
         match = self._MENTION_COMMAND_RE.match(event.message_str or "")
@@ -565,11 +620,31 @@ class DailyCardDrawPlugin(Star):
 
         if self.config_helper.is_debug_log_enabled():
             logger.info(
-                f"【抽卡诊断】指令前带 @ 提及，走兜底匹配：message_str={event.message_str!r} "
+                f"【抽卡诊断】指令前有提及或唤醒前缀，走兜底匹配：message_str={event.message_str!r} "
                 f"command={match.group('command')!r} args={(match.group('args') or '')!r}"
             )
         async for result in command_stream:
             yield result
+
+    @staticmethod
+    def _primary_command_matches(event: AstrMessageEvent) -> bool:
+        """判断 AstrBot 原生 CommandFilter 会不会匹配这条消息（匹配时兜底不接管）。"""
+        if not event.is_at_or_wake_command:
+            return False
+        normalized = re.sub(r"\s+", " ", event.get_message_str().strip())
+        try:
+            from astrbot.core.star.star_handler import star_handlers_registry
+        except Exception:  # noqa: BLE001
+            return False
+        for handler in star_handlers_registry.get_handlers_by_module_name(__name__):
+            for filter_ref in handler.event_filters:
+                get_names = getattr(filter_ref, "get_complete_command_names", None)
+                if not callable(get_names):
+                    continue
+                for name in get_names():
+                    if normalized == name or normalized.startswith(f"{name} "):
+                        return True
+        return False
 
     def _dispatch_command(self, command: str, event: AstrMessageEvent, args: list[str]):
         """把兜底匹配到的指令转交给对应的命令处理函数。
