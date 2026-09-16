@@ -34,7 +34,7 @@ a {
 }
 
 .wrap {
-  max-width: 1120px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 24px 18px 64px;
 }
@@ -129,6 +129,23 @@ input[type="checkbox"] {
   width: 16px;
   height: 16px;
   accent-color: var(--accent);
+}
+
+/* 多选下拉：让列表可滚动、选项更紧凑 */
+select[multiple] {
+  min-height: 84px;
+  max-height: 150px;
+  padding: 4px;
+}
+
+select[multiple] option {
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+
+select[multiple] option:checked {
+  background: var(--accent-soft);
+  color: var(--text);
 }
 
 .row {
@@ -243,6 +260,33 @@ tbody tr:hover {
 .rarity.N {
   color: #101725;
   background: var(--n);
+}
+
+/* 1~6 星数字稀有度（JSON 数据格式） */
+.rarity.r1,
+.rarity.r2 {
+  color: #101725;
+  background: var(--n);
+}
+
+.rarity.r3 {
+  color: #04263f;
+  background: var(--r);
+}
+
+.rarity.r4 {
+  color: #fff;
+  background: #7b46d6;
+}
+
+.rarity.r5 {
+  color: #201600;
+  background: var(--ssr);
+}
+
+.rarity.r6 {
+  color: #2a0018;
+  background: linear-gradient(90deg, #ff7ad9, #ffd166);
 }
 
 .stat {
@@ -363,10 +407,48 @@ tbody tr:hover {
 
 .modal .card {
   width: 100%;
-  max-width: 520px;
+  max-width: 560px;
   margin: 0;
   max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 卡池配置这类内容较多的弹窗用宽版 */
+.modal .card.wide {
+  max-width: 1000px;
+}
+
+.modal .card > h2 {
+  flex: 0 0 auto;
+}
+
+.modal-body {
+  flex: 1 1 auto;
   overflow-y: auto;
+  min-height: 0;
+  padding-right: 4px;
+}
+
+.modal-footer {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.filter-bar {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.filter-bar .field label {
+  font-size: 12px;
 }
 
 .modal .card h2 {

@@ -40,19 +40,27 @@ from .app.infrastructure.api_client import ApiClientError, DailyCardDrawApiClien
 from .app.infrastructure.auth import AdminAuthService
 from .app.infrastructure.config_helper import ConfigHelper
 from .app.models.enums import DrawMode
+from .app.models.view_models import DrawReply
 from .app.services.draw_service import DrawService
 from .app.services.pool_service import PoolService
 from .app.services.query_service import QueryService
 
 # 指令名按长度倒序，避免「抽卡」抢先匹配「抽卡历史」等。
+# 同时包含「抽卡」与「寻访」两套叫法，供原生指令别名和兜底正则共用。
 _COMMAND_NAMES = (
     "重置抽卡次数",
     "抽卡历史",
+    "寻访历史",
     "抽卡统计",
+    "寻访统计",
     "抽卡帮助",
+    "寻访帮助",
     "今日抽卡",
+    "今日历史",
     "卡池列表",
+    "十连寻访",
     "抽卡",
+    "寻访",
 )
 
 # 兜底匹配：AstrBot 原生指令过滤器要求 message_str 直接以指令名开头，下面两种情况下
@@ -448,34 +456,69 @@ class DailyCardDrawPlugin(Star):
     def _build_context(self, event: AstrMessageEvent):
         return self.draw_controller.build_context(event)
 
-    @filter.command("抽卡")
-    async def draw(self, event: AstrMessageEvent, arg1: str = "", arg2: str = ""):
-        """执行单抽或十连。"""
+    async def _do_draw(
+        self,
+        event: AstrMessageEvent,
+        pool_key: str,
+        draw_mode: DrawMode,
+        command_name: str,
+    ):
+        """执行抽卡并回复，供多个指令入口复用。"""
         context = self._build_context(event)
-        pool_key, draw_mode = self._parse_pool_and_mode(arg1, arg2)
         self._log_command_entry(
-            "抽卡",
-            arg1=arg1,
-            arg2=arg2,
+            command_name,
             pool_key=pool_key,
             draw_mode=draw_mode.value,
             qq_id=context.qq_id,
         )
+        image_url = ""
         try:
-            message = await self.draw_controller.handle_draw(
+            reply = await self.draw_controller.handle_draw(
                 context=context,
                 pool_key=pool_key,
                 draw_mode=draw_mode,
             )
+            if isinstance(reply, DrawReply):
+                message = reply.text
+                image_url = reply.image_url
+            else:
+                message = str(reply)
         except ApiClientError as exc:
             message = f"抽卡失败：{exc}"
         except ValueError as exc:
             message = f"抽卡参数异常：{exc}"
+
+        # 图片发送失败时至少保证文字结果已经发出。
+        if image_url:
+            try:
+                yield event.image_result(image_url)
+            except Exception as exc:  # noqa: BLE001 - 图片发送失败不应该影响抽卡结果
+                logger.error(f"抽卡图片发送失败：{exc!r}")
+
         # 回复后终止事件传播：避免同一个命令再被其他插件的 handler 或默认 LLM 请求回答一遍。
         yield event.plain_result(message)
         event.stop_event()
 
-    @filter.command("今日抽卡")
+    @filter.command("抽卡", alias={"寻访"})
+    async def draw(self, event: AstrMessageEvent, arg1: str = "", arg2: str = ""):
+        """执行单抽或十连。"""
+        pool_key, draw_mode = self._parse_pool_and_mode(arg1, arg2)
+        async for result in self._do_draw(event, pool_key, draw_mode, "抽卡"):
+            yield result
+
+    @filter.command("十连寻访")
+    async def ten_draw_alias(self, event: AstrMessageEvent, pool_key: str = ""):
+        """执行十连（「抽卡 十连」的寻访别名）。"""
+        target_pool_key = pool_key.strip() or self.config_helper.get_default_pool_key()
+        async for result in self._do_draw(
+            event,
+            target_pool_key,
+            DrawMode.TEN,
+            "十连寻访",
+        ):
+            yield result
+
+    @filter.command("今日抽卡", alias={"今日历史"})
     async def today(self, event: AstrMessageEvent, pool_key: str = ""):
         """查询今日抽卡结果。"""
         context = self._build_context(event)
@@ -495,7 +538,7 @@ class DailyCardDrawPlugin(Star):
         yield event.plain_result(message)
         event.stop_event()
 
-    @filter.command("抽卡历史")
+    @filter.command("抽卡历史", alias={"寻访历史"})
     async def history(self, event: AstrMessageEvent, page: int = 1, page_size: int = 10):
         """查询抽卡历史。"""
         context = self._build_context(event)
@@ -516,7 +559,7 @@ class DailyCardDrawPlugin(Star):
         yield event.plain_result(message)
         event.stop_event()
 
-    @filter.command("抽卡统计")
+    @filter.command("抽卡统计", alias={"寻访统计"})
     async def stats(self, event: AstrMessageEvent):
         """查询累计统计。"""
         context = self._build_context(event)
@@ -561,21 +604,21 @@ class DailyCardDrawPlugin(Star):
         yield event.plain_result(message)
         event.stop_event()
 
-    @filter.command("抽卡帮助", alias={"抽卡help", "carddraw_help"})
+    @filter.command("抽卡帮助", alias={"抽卡help", "carddraw_help", "寻访帮助"})
     async def help(self, event: AstrMessageEvent):
         """查看帮助。"""
         self._log_command_entry("抽卡帮助")
         message = "\n".join(
             [
                 "【每日抽卡插件帮助】",
-                "1. /抽卡 —— 默认卡池单抽",
-                "2. /抽卡 十连 —— 默认卡池十连（10连、ten 等效）",
-                "3. /抽卡 <卡池Key> —— 指定卡池单抽，例如 /抽卡 normal_pool",
-                "4. /抽卡 <卡池Key> 十连 —— 指定卡池十连",
-                "5. /今日抽卡 [卡池Key] —— 今日次数与最近结果",
-                "6. /抽卡历史 [页码] [每页数量] —— 历史记录，默认 1 10",
-                "7. /抽卡统计 —— 累计统计",
-                "8. /抽卡帮助 —— 本帮助（别名：/抽卡help、/carddraw_help）",
+                "1. /抽卡、/寻访 —— 默认卡池单抽",
+                "2. /抽卡 十连、/十连寻访 —— 默认卡池十连（10连、ten 等效）",
+                "3. /抽卡 <卡池Key>、/寻访 <卡池Key> —— 指定卡池单抽",
+                "4. /抽卡 <卡池Key> 十连、/十连寻访 <卡池Key> —— 指定卡池十连",
+                "5. /今日抽卡 [卡池Key]、/今日历史 [卡池Key] —— 今日次数与最近结果",
+                "6. /抽卡历史 [页码] [每页数量]、/寻访历史 [页码] [每页数量] —— 历史记录，默认 1 10",
+                "7. /抽卡统计、/寻访统计 —— 累计统计",
+                "8. /抽卡帮助、/寻访帮助 —— 本帮助（别名：/抽卡help、/carddraw_help）",
                 "管理员命令：/卡池列表、/重置抽卡次数 <QQ号> <卡池ID>（两个参数必填）",
             ]
         )
@@ -652,21 +695,23 @@ class DailyCardDrawPlugin(Star):
         返回命令处理函数的异步生成器（内部会 yield 回复并终止事件传播）；
         没有可用的处理方式时返回 None，此时调用方不回复、也不终止事件。
         """
-        if command == "抽卡":
+        if command in {"抽卡", "寻访"}:
             return self.draw(event, self._arg(args, 0), self._arg(args, 1))
-        if command == "今日抽卡":
+        if command == "十连寻访":
+            return self.ten_draw_alias(event, self._arg(args, 0))
+        if command in {"今日抽卡", "今日历史"}:
             return self.today(event, self._arg(args, 0))
-        if command == "抽卡历史":
+        if command in {"抽卡历史", "寻访历史"}:
             return self.history(
                 event,
                 self._to_int(self._arg(args, 0), 1),
                 self._to_int(self._arg(args, 1), 10),
             )
-        if command == "抽卡统计":
+        if command in {"抽卡统计", "寻访统计"}:
             return self.stats(event)
         if command == "卡池列表":
             return self.pool_list(event)
-        if command == "抽卡帮助":
+        if command in {"抽卡帮助", "寻访帮助"}:
             return self.help(event)
         if command == "重置抽卡次数" and len(args) >= 2:
             return self.reset_quota(event, args[0], args[1])

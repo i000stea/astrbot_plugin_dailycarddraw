@@ -1,11 +1,11 @@
-﻿<#
+<#
 .SYNOPSIS
     每日抽卡 Node 服务：一键打包 + 推送到服务器。
 
 .DESCRIPTION
     1. 重新生成 update\（只含生产所需文件，不含 node_modules / scripts / .env）
     2. 打包成 update.tar.gz
-    3. 配置了 -Server 时：scp 上传 -> 远程备份旧版本 -> 解包覆盖 -> npm ci + pm2 重启
+    3. 配置了 -Server 时：scp 上传 -> 远程备份旧版本 -> 解包覆盖 -> npm install + pm2 重启
     4. 未配置 -Server 时：只打包，并打印手动上传步骤
 
 .EXAMPLE
@@ -165,7 +165,7 @@ try {
         Write-Host '  两种上传方式：' -ForegroundColor White
         Write-Host "   a) 宝塔文件管理器：把 $(Join-Path $ScriptDir $PackageName) 传到 $($Config.TargetDir)"
         Write-Host '      然后在服务器终端执行：'
-        Write-Host "         cd $($Config.TargetDir) && tar -xzf $PackageName && npm ci --omit=dev && pm2 start ecosystem.config.js" -ForegroundColor DarkGray
+        Write-Host "         cd $($Config.TargetDir) && tar -xzf $PackageName && npm install --omit=dev && pm2 start ecosystem.config.js" -ForegroundColor DarkGray
         Write-Host '   b) 本脚本加参数重跑，自动上传并重启：'
         Write-Host '         .\updatePush.ps1 -Server 你的服务器IP' -ForegroundColor DarkGray
         Write-Host ''
@@ -214,8 +214,8 @@ try {
     $installCommand = if ($Config.RemoteInstall) {
         @'
 cd "$TARGET"
-command -v npm >/dev/null 2>&1 || { echo "[remote][x] 找不到 npm，请在宝塔终端手动执行 npm ci"; exit 1; }
-npm ci --omit=dev
+command -v npm >/dev/null 2>&1 || { echo "[remote][x] 找不到 npm，请在宝塔终端手动执行 npm install --omit=dev"; exit 1; }
+npm install --omit=dev
 command -v pm2 >/dev/null 2>&1 || { echo "[remote][x] 找不到 pm2，请手动执行 pm2 start ecosystem.config.js"; exit 1; }
 if pm2 describe __APP__ >/dev/null 2>&1; then pm2 restart ecosystem.config.js --update-env; else pm2 start ecosystem.config.js; fi
 pm2 save >/dev/null 2>&1 || true

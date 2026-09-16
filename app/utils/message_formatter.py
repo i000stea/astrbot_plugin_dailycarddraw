@@ -4,16 +4,27 @@ from ..infrastructure.time_helper import now_text
 from ..models.dto import DrawResult, HistoryRecord, PoolInfo, TodaySummary, UserStats
 
 
-def format_draw_result(qq_id: str, result: DrawResult) -> str:
+def _rarity_text(rarity: str) -> str:
+    """把数字稀有度（1~6）显示成星级；非数字保持原样。"""
+    value = str(rarity or "").strip()
+    if value.isdigit():
+        return f"{value}★"
+    return value or "?"
+
+
+def format_draw_result(qq_id: str, result: DrawResult, *, compact: bool = False) -> str:
     lines = [
         "【每日抽卡】",
         f"QQ：{qq_id}",
         f"卡池：{result.pool_name}",
         f"模式：{result.draw_mode.label}",
-        "结果：",
     ]
-    for index, card in enumerate(result.cards, start=1):
-        lines.append(f"{index}. {card.card_name} {card.rarity}")
+
+    if not compact:
+        lines.append("结果：")
+        for index, card in enumerate(result.cards, start=1):
+            lines.append(f"{index}. {card.card_name} {_rarity_text(card.rarity)}")
+
     lines.extend(
         [
             f"本次积分：{result.total_score}",
@@ -35,7 +46,7 @@ def format_today_summary(summary: TodaySummary) -> str:
     if summary.latest_cards:
         lines.append("最近结果：")
         for index, card in enumerate(summary.latest_cards, start=1):
-            lines.append(f"{index}. {card.card_name} {card.rarity}")
+            lines.append(f"{index}. {card.card_name} {_rarity_text(card.rarity)}")
     else:
         lines.append("今天还没有抽卡记录。")
     return "\n".join(lines)
@@ -55,7 +66,7 @@ def format_history(records: list[HistoryRecord], page: int, page_size: int, tota
     for record in records:
         lines.append(
             f"- {record.created_at} | {record.pool_name} | {record.draw_mode} | "
-            f"{record.total_score} 分 | 最高 {record.highest_rarity or '?'}"
+            f"{record.total_score} 分 | 最高 {_rarity_text(record.highest_rarity)}"
         )
     return "\n".join(lines)
 

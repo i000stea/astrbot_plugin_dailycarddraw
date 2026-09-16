@@ -212,7 +212,10 @@ npm-debug.log*
 yarn-error.log*
 server/logs/
 .npm-tmp-cache/
+
 server/update/
 server/update.zip
 server/update.tar.gz
 server/update-push.log
+
+server/resource/*

@@ -1,7 +1,7 @@
 name: astrbot_plugin_dailycarddraw
 display_name: 每日抽卡插件
 author: Jason.Joestar
-version: 0.1.4
+version: 0.2.0
 repo: https://github.com/i000stea/astrbot_plugin_dailycarddraw
 short_desc: 面向 QQ 号管理的每日抽卡与卡池管理插件
 desc: |

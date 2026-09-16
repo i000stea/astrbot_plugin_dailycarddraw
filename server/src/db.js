@@ -49,6 +49,7 @@ async function checkSchema(pool) {
     'card_pool',
     'card_item',
     'pool_card',
+    'pool_rarity',
     'daily_quota',
     'draw_record',
     'draw_record_item',

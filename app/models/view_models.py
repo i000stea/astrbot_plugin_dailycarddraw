@@ -14,6 +14,14 @@ class CommandContext:
 
 
 @dataclass
+class DrawReply:
+    """抽卡回复：文本 + 可选的图片地址。"""
+
+    text: str
+    image_url: str = ""
+
+
+@dataclass
 class HistoryPageViewModel:
     """历史记录分页视图。"""
 

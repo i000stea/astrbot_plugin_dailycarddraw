@@ -2,7 +2,7 @@
 
 const { withTransaction } = require('../db');
 const { nowDateTime, todayDate, buildRecordNo } = require('../time');
-const { pickWeighted, highestRarity } = require('../domain/draw');
+const { pickWeightedByRarity, highestRarity, rarityTier } = require('../domain/draw');
 const { badRequest, notFound, ApiError } = require('../http/responses');
 
 const MODE_LABELS = { single: '单抽', ten: '十连' };
@@ -64,10 +64,12 @@ function createDrawService({ pool, config, repositories }) {
       }
 
       const drawCount = drawMode === 'ten' ? Math.max(1, config.draw.tenCount) : 1;
-      const drawn = pickWeighted(candidates, drawCount);
+      const rarityWeights = await poolRepository.listRarityWeights(conn, cardPool.id);
+        const drawn = pickWeightedByRarity(candidates, rarityWeights, drawCount);
       const totalScore = drawn.reduce((sum, card) => sum + (Number(card.score_value) || 0), 0);
       const topRarity = highestRarity(drawn.map((card) => card.rarity));
       const recordNo = buildRecordNo();
+      const tiers = drawn.map((card) => rarityTier(card.rarity));
 
       const recordId = await drawRecordRepository.insertRecord(conn, {
         recordNo,
@@ -90,8 +92,8 @@ function createDrawService({ pool, config, repositories }) {
         singleCount: drawMode === 'single' ? 1 : 0,
         tenCount: drawMode === 'ten' ? 1 : 0,
         score: totalScore,
-        ssrCount: drawn.filter((card) => card.rarity === 'SSR').length,
-        urCount: drawn.filter((card) => card.rarity === 'UR').length,
+        ssrCount: tiers.filter((tier) => tier === 'SSR').length,
+        urCount: tiers.filter((tier) => tier === 'UR').length,
       });
 
       return {
@@ -106,7 +108,9 @@ function createDrawService({ pool, config, repositories }) {
           ten_limit: Number(quota.ten_limit) || 0,
         },
         cards: drawn.map((card) => ({
+            card_key: card.card_key,
           card_name: card.card_name,
+            profession: card.profession || '',
           rarity: card.rarity,
           score: Number(card.score_value) || 0,
         })),

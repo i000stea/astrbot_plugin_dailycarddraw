@@ -30,7 +30,10 @@ async function insertItems(conn, recordId, cards) {
   if (!cards.length) {
     return;
   }
-  const placeholders = cards.map(() => '(?, ?, ?, ?, ?)').join(', ');
+  // 列清单有 6 列（record_id, card_id, card_name_snapshot, rarity_snapshot,
+  // score_snapshot, position_index），每个元组必须同样是 6 个占位符，
+  // 否则 MySQL 会直接报 “Column count doesn't match value count at row 1”。
+  const placeholders = cards.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
   const values = [];
   cards.forEach((card, index) => {
     values.push(

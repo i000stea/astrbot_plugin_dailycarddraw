@@ -87,7 +87,10 @@
         <div class="card">
           <h2>
             卡牌列表
-            <button class="small" id="newCardBtn" style="margin-left: auto">新建卡牌</button>
+            <span style="margin-left: auto; display: flex; gap: 8px">
+                <button class="ghost small" id="importCardsBtn">上传 JSON 录入</button>
+                <button class="small" id="newCardBtn">新建卡牌</button>
+              </span>
           </h2>
           <div class="row" style="margin-bottom: 12px">
             <div class="field">
@@ -96,6 +99,33 @@
             </div>
             <div class="field" style="flex: 0 0 auto">
               <button class="ghost" id="cardSearchBtn">搜索</button>
+              <input type="file" id="importFileInput" accept=".json,application/json" class="hidden" />
+              </div>
+              <div class="field">
+                <label for="cardRarityFilter">稀有度</label>
+                <select id="cardRarityFilter" multiple title="可按住 Ctrl / ⌘ 多选"></select>
+              </div>
+              <div class="field">
+                <label for="cardProfessionFilter">职业</label>
+                <select id="cardProfessionFilter" multiple title="可按住 Ctrl / ⌘ 多选"></select>
+              </div>
+              <div class="field">
+                <label for="cardObtainFilter">获取方式</label>
+                <select id="cardObtainFilter" multiple title="可按住 Ctrl / ⌘ 多选"></select>
+              </div>
+              <div class="field">
+                <label for="cardSort">排序</label>
+                <select id="cardSort">
+                  <option value="default">默认</option>
+                  <option value="rarity_desc">稀有度 ↓</option>
+                  <option value="rarity_asc">稀有度 ↑</option>
+                  <option value="key_asc">card_key ↑</option>
+                  <option value="key_desc">card_key ↓</option>
+                  <option value="name_asc">名称</option>
+                </select>
+              </div>
+              <div class="field" style="flex: 0 0 auto">
+                <button class="ghost" id="cardResetFilterBtn">重置</button>
             </div>
           </div>
           <div class="table-scroll">
@@ -104,6 +134,16 @@
                 <tr>
                   <th>ID</th>
                   <th>card_key</th>
+                    <th>名称</th>
+                    <th>稀有度</th>
+                    <th>积分</th>
+                    <th>职业</th>
+                    <th>获取方式</th>
+                    <th>启用</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <!--
                   <th>名称</th>
                   <th>稀有度</th>
                   <th>积分</th>
@@ -111,7 +151,8 @@
                   <th>操作</th>
                 </tr>
               </thead>
-              <tbody id="cardsBody"></tbody>
+              -->
+                <tbody id="cardsBody"></tbody>
             </table>
           </div>
         </div>
@@ -209,8 +250,8 @@
           <button class="ghost small" id="modalClose">关闭</button>
         </h2>
         <div id="modalMsg" class="msg"></div>
-        <div id="modalBody"></div>
-        <div class="row" style="margin-top: 16px; justify-content: flex-end">
+        <div id="modalBody" class="modal-body"></div>
+        <div class="row modal-footer">
           <button class="ghost" id="modalCancel">取消</button>
           <button id="modalSubmit">保存</button>
         </div>

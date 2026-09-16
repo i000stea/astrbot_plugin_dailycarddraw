@@ -339,7 +339,7 @@ async function main() {
 
   const newCard = await call(
     '/manage/api/cards',
-    jsonPost({ card_key: 'http_card', card_name: 'HTTP 卡', rarity: 'UR', score_value: 50 }, auth),
+    jsonPost({ card_key: 'http_card', card_name: 'HTTP 卡', rarity: 6, score_value: 50 }, auth),
   );
   check('后台新建卡牌', () => assert.strictEqual(newCard.status, 200));
 

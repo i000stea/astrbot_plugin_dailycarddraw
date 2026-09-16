@@ -26,10 +26,10 @@ function showMessage(text, type = 'success') {
   }
 }
 
-function showModalMessage(text) {
+function showModalMessage(text, type = 'error') {
   const box = $('modalMsg');
   box.textContent = text;
-  box.className = 'msg show error';
+  box.className = `msg show ${type}`;
 }
 
 async function api(path, { method = 'GET', body } = {}) {
@@ -64,7 +64,15 @@ async function api(path, { method = 'GET', body } = {}) {
 }
 
 function rarityBadge(rarity) {
-  const value = String(rarity || '?').toUpperCase();
+  const raw = String(rarity ?? '').trim();
+  if (!raw) {
+    return '<span class="rarity">?</span>';
+  }
+  if (/^\d+$/.test(raw)) {
+    const stars = Number(raw);
+    return `<span class="rarity r${stars}">${stars}★</span>`;
+  }
+  const value = raw.toUpperCase();
   return `<span class="rarity ${value}">${value}</span>`;
 }
 
@@ -80,6 +88,108 @@ function escapeHtml(text) {
 
 function yesNo(value) {
   return value ? '<span style="color: var(--ok)">是</span>' : '<span class="muted">否</span>';
+}
+
+/** 获取方式统一成数组：接口已返回数组，这里也兼容逗号分隔的历史字符串。 */
+function toObtainList(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item ?? '').trim()).filter(Boolean);
+  }
+  const text = String(value ?? '').trim();
+  if (!text) {
+    return [];
+  }
+  if (text.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) {
+        return toObtainList(parsed);
+      }
+    } catch (error) {
+      // 忽略，按普通字符串处理
+    }
+  }
+  return text
+    .split(/[,，]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function obtainText(value) {
+  return toObtainList(value).join('、');
+}
+
+/** 多选下拉的已选值（忽略「全部」选项的空值）。 */
+function getSelectedValues(select) {
+  if (!select) {
+    return [];
+  }
+  return [...select.selectedOptions].map((option) => option.value).filter((value) => value !== '');
+}
+
+/** 多选下拉规范化：点「全部」只保留全部；已选全部时再选具体值则自动去掉全部。 */
+function normalizeMultiSelect(select) {
+  if (!select) {
+    return;
+  }
+  const options = [...select.options];
+  const current = new Set(options.filter((option) => option.selected).map((option) => option.value));
+  const previous = select._prevSelected instanceof Set ? select._prevSelected : new Set(current);
+  const allValue = '';
+  const next = new Set(current);
+
+  if (next.has(allValue) && !previous.has(allValue)) {
+    next.clear();
+    next.add(allValue);
+  } else if (next.has(allValue) && next.size > 1) {
+    next.delete(allValue);
+  }
+  if (!next.size && options.some((option) => option.value === '')) {
+    next.add(allValue);
+  }
+
+  options.forEach((option) => {
+    option.selected = next.has(option.value);
+  });
+  select._prevSelected = next;
+}
+
+function resetMultiSelect(select) {
+  if (!select) {
+    return;
+  }
+  const next = new Set(['']);
+  [...select.options].forEach((option) => {
+    option.selected = next.has(option.value);
+  });
+  select._prevSelected = new Set(next);
+}
+
+/** 重建选项后恢复已选值；没有匹配项时回到「全部」。 */
+function restoreMultiSelect(select, values) {
+  if (!select) {
+    return;
+  }
+  const wanted = new Set(values || []);
+  const allOption = [...select.options].find((option) => option.value === '');
+  const next = new Set();
+  [...select.options].forEach((option) => {
+    if (option.value === '') {
+      option.selected = false;
+      return;
+    }
+    option.selected = wanted.has(option.value);
+    if (option.selected) {
+      next.add(option.value);
+    }
+  });
+  if (!next.size && allOption) {
+    allOption.selected = true;
+    next.add('');
+  } else if (allOption) {
+    allOption.selected = false;
+  }
+  select._prevSelected = new Set(next);
 }
 
 /* ---------------- 登录 ---------------- */
@@ -194,7 +304,8 @@ async function loadPools() {
         <td>
           <button class="ghost small" data-action="edit-pool" data-id="${pool.id}">编辑</button>
           <button class="ghost small" data-action="pool-cards" data-id="${pool.id}">卡池配置</button>
-          <button class="danger small" data-action="delete-pool" data-id="${pool.id}">删除</button>
+          <button class="ghost small" data-action="copy-pool" data-id="${pool.id}">复制</button>
+            <button class="danger small" data-action="delete-pool" data-id="${pool.id}">删除</button>
         </td>
       </tr>`,
     )
@@ -282,76 +393,460 @@ function openPoolModal(pool) {
   });
 }
 
+function openCopyPoolModal(pool) {
+  const body = `
+    <p class="hint">会复制该卡池的卡牌权重、稀有度权重与开关/配额设置，生成一个新卡池。</p>
+    <div class="field" style="margin-bottom: 12px">
+      <label>新 pool_key（字母数字下划线短横线）</label>
+      <input id="cp_pool_key" value="${escapeHtml(pool.pool_key + '_copy')}" />
+    </div>
+    <div class="field" style="margin-bottom: 12px">
+      <label>新卡池名称</label>
+      <input id="cp_pool_name" value="${escapeHtml(pool.pool_name + ' 副本')}" />
+    </div>
+  `;
+  openModal(`复制卡池 · ${pool.pool_name}`, body, async () => {
+    const payload = {
+      pool_key: $('cp_pool_key').value.trim(),
+      pool_name: $('cp_pool_name').value.trim(),
+    };
+    if (!payload.pool_key || !payload.pool_name) {
+      showModalMessage('pool_key 与卡池名称都不能为空。');
+      return;
+    }
+    await api(`/pools/${pool.id}/copy`, { method: 'POST', body: payload });
+    closeModal();
+    await switchTab('pools');
+    showMessage(`已复制为「${payload.pool_name}」。`, 'success');
+  });
+}
+
+/** 本地排序：稀有度 / card_key / 名称（仅用于前端展示）。 */
+function sortCards(list, mode) {
+  const rank = (card) => Number.parseInt(card.rarity, 10) || 0;
+  const key = (card) => String(card.card_key || '');
+  const name = (card) => String(card.card_name || '');
+  const sorted = [...list];
+  switch (mode) {
+    case 'rarity_desc':
+      sorted.sort((a, b) => rank(b) - rank(a) || key(a).localeCompare(key(b)));
+      break;
+    case 'rarity_asc':
+      sorted.sort((a, b) => rank(a) - rank(b) || key(a).localeCompare(key(b)));
+      break;
+    case 'key_desc':
+      sorted.sort((a, b) => key(b).localeCompare(key(a)));
+      break;
+    case 'name_asc':
+      sorted.sort((a, b) => name(a).localeCompare(name(b), 'zh-Hans-CN'));
+      break;
+    case 'key_asc':
+      sorted.sort((a, b) => key(a).localeCompare(key(b)));
+      break;
+    default:
+      sorted.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+  }
+  return sorted;
+}
+
 async function openPoolCardsModal(pool) {
   const data = await api(`/pools/${pool.id}/cards`);
   const cards = await api('/cards');
+  const allCards = cards.list || [];
   const configured = new Map((data.list || []).map((item) => [item.card_id, item]));
+  const rarityWeights = new Map((data.rarity_list || []).map((item) => [item.rarity, item]));
 
-  const rows = (cards.list || [])
-    .map((card) => {
-      const current = configured.get(card.id);
+  // 编辑态与 DOM 解耦：筛选/排序重建表格时不会丢失改动
+  const weightState = new Map();
+  allCards.forEach((card) => {
+    const current = configured.get(card.id);
+    weightState.set(card.id, {
+      weight: current ? Number(current.weight) || 0 : 0,
+      is_up: Boolean(current && current.is_up),
+    });
+  });
+
+  const rarityRows = [6, 5, 4, 3, 2, 1]
+    .map((rarity) => {
+      const row = rarityWeights.get(rarity);
+      const weight = row ? row.weight : 0;
+      const rate = row ? `${(row.rate * 100).toFixed(2)}%` : '0.00%';
       return `<tr>
-        <td>${escapeHtml(card.card_name)}</td>
-        <td>${rarityBadge(card.rarity)}</td>
-        <td>${card.score_value}</td>
-        <td><input type="number" min="0" data-card-weight="${card.id}" value="${current ? current.weight : 0}" style="width: 90px" /></td>
-        <td><input type="checkbox" data-card-up="${card.id}" ${current && current.is_up ? 'checked' : ''} /></td>
-        <td class="muted">${current ? (current.rate * 100).toFixed(2) + '%' : '未加入'}</td>
+        <td>${rarityBadge(rarity)}</td>
+        <td><input type="number" min="0" data-rarity-weight="${rarity}" value="${weight}" style="width: 110px" /></td>
+        <td class="muted" data-rarity-rate="${rarity}">${rate}</td>
       </tr>`;
     })
     .join('');
 
+  const obtainOptions = [...new Set(allCards.flatMap((card) => toObtainList(card.obtain)))]
+    .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+    .map((obtain) => `<option value="${escapeHtml(obtain)}">${escapeHtml(obtain)}</option>`)
+    .join('');
+  const professionOptions = [...new Set(allCards.map((card) => card.profession).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+    .map((profession) => `<option value="${escapeHtml(profession)}">${escapeHtml(profession)}</option>`)
+    .join('');
+
   const body = `
-    <p class="hint">权重为 0 表示该卡不参与本卡池抽取。保存后立刻生效。</p>
+    <p class="hint">抽卡分两步：先按「稀有度权重」抽星级，再在该星级内按「卡牌权重」抽具体卡。某星级权重为 0 表示不抽该星级；不配置时退回该星级卡牌权重之和。</p>
+    <div class="table-scroll" style="margin-bottom: 14px">
+      <table>
+        <thead><tr><th>稀有度</th><th>星级权重</th><th>当前概率</th></tr></thead>
+        <tbody>${rarityRows}</tbody>
+      </table>
+    </div>
+
+    <div class="filter-bar">
+      <div class="row" style="margin-bottom: 10px">
+        <div class="field">
+          <label>按获取方式批量操作</label>
+          <select id="poolObtainBatch"><option value="">请选择获取方式</option>${obtainOptions}</select>
+        </div>
+        <div class="field" style="flex: 0 0 auto">
+          <button class="ghost small" id="poolBatchAddBtn" type="button">批量加入（权重 1）</button>
+        </div>
+        <div class="field" style="flex: 0 0 auto">
+          <button class="danger small" id="poolBatchRemoveBtn" type="button">批量移除</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>搜索</label>
+          <input id="poolCardKeyword" placeholder="名称 / card_key" />
+        </div>
+        <div class="field">
+          <label>稀有度</label>
+          <select id="poolRarityFilter" multiple title="可按住 Ctrl / ⌘ 多选"><option value="">全部</option>${[6, 5, 4, 3, 2, 1]
+            .map((rarity) => `<option value="${rarity}">${rarity}★</option>`)
+            .join('')}</select>
+        </div>
+        <div class="field">
+          <label>职业</label>
+          <select id="poolProfessionFilter" multiple title="可按住 Ctrl / ⌘ 多选"><option value="">全部</option>${professionOptions}</select>
+        </div>
+        <div class="field">
+          <label>获取方式</label>
+          <select id="poolObtainFilter" multiple title="可按住 Ctrl / ⌘ 多选"><option value="">全部</option>${obtainOptions}</select>
+        </div>
+        <div class="field">
+          <label>权重</label>
+            <select id="poolWeightFilter">
+              <option value="all">显示全部</option>
+              <option value="gt0">仅显示权重&gt;0</option>
+              <option value="eq0">仅显示权重=0</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>排序</label>
+          <select id="poolCardSort">
+            <option value="default">默认</option>
+            <option value="rarity_desc">稀有度 ↓</option>
+            <option value="rarity_asc">稀有度 ↑</option>
+            <option value="key_asc">card_key ↑</option>
+            <option value="key_desc">card_key ↓</option>
+            <option value="name_asc">名称</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <p class="hint">卡牌权重只决定同星级内部概率，UP 仅作标记。保存后立刻生效。</p>
     <div class="table-scroll">
       <table>
-        <thead><tr><th>卡牌</th><th>稀有度</th><th>积分</th><th>权重</th><th>UP</th><th>当前概率</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="6" class="muted">还没有卡牌，请先在「卡牌」里创建。</td></tr>'}</tbody>
+        <thead><tr><th>卡牌</th><th>稀有度</th><th>权重</th><th>UP</th><th>星级内概率</th><th>综合概率</th></tr></thead>
+        <tbody id="poolCardBody"></tbody>
       </table>
     </div>
   `;
 
-  openModal(`卡池配置 · ${pool.pool_name}`, body, async () => {
-    const items = [];
-    document.querySelectorAll('[data-card-weight]').forEach((input) => {
-      const cardId = Number.parseInt(input.dataset.cardWeight, 10);
-      const weight = Number.parseInt(input.value, 10) || 0;
-      const upBox = document.querySelector(`[data-card-up="${cardId}"]`);
-      if (weight > 0) {
-        items.push({ card_id: cardId, weight, is_up: Boolean(upBox && upBox.checked) });
+  function syncFromDom() {
+    document.querySelectorAll('[data-card-row]').forEach((row) => {
+      const id = Number.parseInt(row.dataset.cardRow, 10);
+      const input = row.querySelector('[data-card-weight]');
+      const up = row.querySelector('[data-card-up]');
+      weightState.set(id, {
+        weight: Math.max(0, Number.parseInt(input.value, 10) || 0),
+        is_up: Boolean(up && up.checked),
+      });
+    });
+  }
+
+  function recomputeRates() {
+    const rarityWeightMap = new Map();
+    document.querySelectorAll('[data-rarity-weight]').forEach((input) => {
+      rarityWeightMap.set(
+        Number.parseInt(input.dataset.rarityWeight, 10),
+        Math.max(0, Number.parseInt(input.value, 10) || 0),
+      );
+    });
+    const rarityTotal = [...rarityWeightMap.values()].reduce((sum, value) => sum + value, 0);
+
+    const cardSums = new Map();
+    allCards.forEach((card) => {
+      const state = weightState.get(card.id);
+      const weight = state ? state.weight : 0;
+      cardSums.set(card.rarity, (cardSums.get(card.rarity) || 0) + weight);
+    });
+
+    document.querySelectorAll('[data-rarity-rate]').forEach((cell) => {
+      const rarity = Number.parseInt(cell.dataset.rarityRate, 10);
+      const weight = rarityWeightMap.get(rarity) || 0;
+      cell.textContent = rarityTotal > 0 ? `${((weight / rarityTotal) * 100).toFixed(2)}%` : '0.00%';
+    });
+
+    document.querySelectorAll('[data-card-row]').forEach((row) => {
+      const id = Number.parseInt(row.dataset.cardRow, 10);
+      const rarity = Number.parseInt(row.dataset.cardRarity, 10);
+      const state = weightState.get(id) || { weight: 0 };
+      const weight = state.weight || 0;
+      const sum = cardSums.get(rarity) || 0;
+      const within = sum > 0 ? weight / sum : 0;
+      const rarityRate = rarityTotal > 0 ? (rarityWeightMap.get(rarity) || 0) / rarityTotal : 0;
+      const withinCell = row.querySelector('[data-within-rate]');
+      const overallCell = row.querySelector('[data-overall-rate]');
+      if (withinCell) {
+        withinCell.textContent = weight > 0 ? `${(within * 100).toFixed(2)}%` : '-';
+      }
+      if (overallCell) {
+        overallCell.textContent = weight > 0 ? `${(within * rarityRate * 100).toFixed(2)}%` : '未加入';
       }
     });
-    await api(`/pools/${pool.id}/cards`, { method: 'PUT', body: { items } });
-    closeModal();
-    showMessage(`卡池配置已保存（${items.length} 张卡参与抽取）。`, 'success');
-  });
+  }
+
+  function renderCardRows() {
+    const keyword = $('poolCardKeyword').value.trim().toLowerCase();
+    const rarityFilters = getSelectedValues($('poolRarityFilter'));
+    const professionFilters = getSelectedValues($('poolProfessionFilter'));
+    const obtainFilters = getSelectedValues($('poolObtainFilter'));
+    const weightFilter = $('poolWeightFilter').value;
+    const sortMode = $('poolCardSort').value;
+
+    let list = allCards.filter((card) => {
+      if (keyword && !`${card.card_key || ''} ${card.card_name || ''}`.toLowerCase().includes(keyword)) {
+        return false;
+      }
+      if (rarityFilters.length && !rarityFilters.includes(String(card.rarity))) {
+        return false;
+      }
+      if (professionFilters.length && !professionFilters.includes(card.profession || '')) {
+        return false;
+      }
+      if (obtainFilters.length) {
+        const obtains = toObtainList(card.obtain);
+        if (!obtainFilters.some((value) => obtains.includes(value))) {
+          return false;
+        }
+      }
+      if (weightFilter !== 'all') {
+        const weight = (weightState.get(card.id) || { weight: 0 }).weight || 0;
+        if (weightFilter === 'gt0' && weight <= 0) {
+          return false;
+        }
+        if (weightFilter === 'eq0' && weight !== 0) {
+          return false;
+        }
+      }
+      return true;
+    });
+    list = sortCards(list, sortMode);
+
+    $('poolCardBody').innerHTML = list.length
+      ? list
+          .map((card) => {
+            const state = weightState.get(card.id) || { weight: 0, is_up: false };
+            return `<tr data-card-row="${card.id}" data-card-rarity="${card.rarity}">
+              <td>${escapeHtml(card.card_name)}</td>
+              <td>${rarityBadge(card.rarity)}</td>
+              <td><input type="number" min="0" data-card-weight="${card.id}" value="${state.weight}" style="width: 90px" /></td>
+              <td><input type="checkbox" data-card-up="${card.id}" ${state.is_up ? 'checked' : ''} /></td>
+              <td class="muted" data-within-rate>-</td>
+              <td class="muted" data-overall-rate>-</td>
+            </tr>`;
+          })
+          .join('')
+      : '<tr><td colspan="6" class="muted">没有符合条件的卡牌。</td></tr>';
+    recomputeRates();
+  }
+
+  function batchByObtain(mode) {
+    const obtain = $('poolObtainBatch').value;
+    if (!obtain) {
+      showModalMessage('请先选择要批量操作的获取方式。');
+      return;
+    }
+    syncFromDom();
+    allCards.forEach((card) => {
+      if (!toObtainList(card.obtain).includes(obtain)) {
+        return;
+      }
+      const state = weightState.get(card.id) || { weight: 0, is_up: false };
+      state.weight = mode === 'add' ? (state.weight > 0 ? state.weight : 1) : 0;
+      weightState.set(card.id, state);
+    });
+    renderCardRows();
+    showModalMessage(`已按获取方式「${obtain}」${mode === 'add' ? '批量加入' : '批量移除'}。`, 'success');
+  }
+
+  openModal(
+    `卡池配置 · ${pool.pool_name}`,
+    body,
+    async () => {
+      syncFromDom();
+      const items = [];
+      weightState.forEach((state, cardId) => {
+        if (state.weight > 0) {
+          items.push({ card_id: cardId, weight: state.weight, is_up: state.is_up });
+        }
+      });
+      const rarityItems = [];
+      document.querySelectorAll('[data-rarity-weight]').forEach((input) => {
+        rarityItems.push({
+          rarity: Number.parseInt(input.dataset.rarityWeight, 10),
+          weight: Number.parseInt(input.value, 10) || 0,
+        });
+      });
+
+      await api(`/pools/${pool.id}/cards`, { method: 'PUT', body: { items, rarity_items: rarityItems } });
+      closeModal();
+      showMessage(`卡池配置已保存（${items.length} 张卡 / ${rarityItems.length} 档稀有度）。`, 'success');
+    },
+    { wide: true },
+  );
+
+  renderCardRows();
+
+  ['poolRarityFilter', 'poolProfessionFilter', 'poolObtainFilter'].forEach((id) => restoreMultiSelect($(id), []));
+
+  // 事件委托：卡牌行会被筛选/排序重建，必须挂在 modalBody 上
+  $('modalBody').oninput = (event) => {
+    const target = event.target;
+    if (target.matches('[data-card-weight]')) {
+      syncFromDom();
+      recomputeRates();
+    } else if (target.matches('[data-rarity-weight]')) {
+      recomputeRates();
+    } else if (target.id === 'poolCardKeyword') {
+      syncFromDom();
+      renderCardRows();
+    }
+  };
+  $('modalBody').onchange = (event) => {
+    const target = event.target;
+    if (target.matches('[data-card-up]')) {
+      syncFromDom();
+    } else if (['poolRarityFilter', 'poolProfessionFilter', 'poolObtainFilter'].includes(target.id)) {
+      normalizeMultiSelect(target);
+      syncFromDom();
+      renderCardRows();
+    } else if (target.id === 'poolWeightFilter' || target.id === 'poolCardSort') {
+      syncFromDom();
+      renderCardRows();
+    } else if (target.matches('[data-card-weight]') && $('poolWeightFilter').value !== 'all') {
+      syncFromDom();
+      renderCardRows();
+    }
+  };
+  $('poolBatchAddBtn').onclick = () => batchByObtain('add');
+  $('poolBatchRemoveBtn').onclick = () => batchByObtain('remove');
 }
 
 /* ---------------- 卡牌 ---------------- */
 
-async function loadCards() {
-  const keyword = $('cardKeyword').value.trim();
-  const data = await api(`/cards${keyword ? `?keyword=${encodeURIComponent(keyword)}` : ''}`);
-  state.cards = data.list || [];
-  $('cardsBody').innerHTML = state.cards
-    .map(
-      (card) => `<tr>
-        <td>${card.id}</td>
-        <td>${escapeHtml(card.card_key)}</td>
-        <td>${escapeHtml(card.card_name)}</td>
-        <td>${rarityBadge(card.rarity)}</td>
-        <td>${card.score_value}</td>
-        <td>${yesNo(card.is_enabled)}</td>
-        <td>
-          <button class="ghost small" data-action="edit-card" data-id="${card.id}">编辑</button>
-          <button class="danger small" data-action="delete-card" data-id="${card.id}">删除</button>
-        </td>
-      </tr>`,
-    )
+function fillCardFilterOptions() {
+  const selected = {
+    rarity: getSelectedValues($('cardRarityFilter')),
+    profession: getSelectedValues($('cardProfessionFilter')),
+    obtain: getSelectedValues($('cardObtainFilter')),
+  };
+
+  const rarityOptions = [6, 5, 4, 3, 2, 1]
+    .map((rarity) => `<option value="${rarity}">${rarity}★</option>`)
     .join('');
+  $('cardRarityFilter').innerHTML = `<option value="">全部稀有度</option>${rarityOptions}`;
+
+  const professions = [...new Set(state.cards.map((card) => card.profession).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+  $('cardProfessionFilter').innerHTML = `<option value="">全部职业</option>${professions
+    .map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`)
+    .join('')}`;
+
+  const obtains = [
+    ...new Set(state.cards.flatMap((card) => toObtainList(card.obtain))),
+  ].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+  $('cardObtainFilter').innerHTML = `<option value="">全部获取方式</option>${obtains
+    .map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`)
+    .join('')}`;
+
+  restoreMultiSelect($('cardRarityFilter'), selected.rarity);
+  restoreMultiSelect($('cardProfessionFilter'), selected.profession);
+  restoreMultiSelect($('cardObtainFilter'), selected.obtain);
+}
+
+function renderCards() {
+  const keyword = $('cardKeyword').value.trim().toLowerCase();
+  const rarityFilters = getSelectedValues($('cardRarityFilter'));
+  const professionFilters = getSelectedValues($('cardProfessionFilter'));
+  const obtainFilters = getSelectedValues($('cardObtainFilter'));
+  const sortMode = $('cardSort').value;
+
+  let list = state.cards.filter((card) => {
+    if (keyword && !`${card.card_key || ''} ${card.card_name || ''}`.toLowerCase().includes(keyword)) {
+      return false;
+    }
+    if (rarityFilters.length && !rarityFilters.includes(String(card.rarity))) {
+      return false;
+    }
+    if (professionFilters.length && !professionFilters.includes(card.profession || '')) {
+      return false;
+    }
+    if (obtainFilters.length) {
+      const obtains = toObtainList(card.obtain);
+      if (!obtainFilters.some((value) => obtains.includes(value))) {
+        return false;
+      }
+    }
+    return true;
+  });
+  list = sortCards(list, sortMode);
+
+  $('cardsBody').innerHTML = list.length
+    ? list
+        .map(
+          (card) => `<tr>
+          <td>${card.id}</td>
+          <td>${escapeHtml(card.card_key)}</td>
+          <td>${escapeHtml(card.card_name)}</td>
+          <td>${rarityBadge(card.rarity)}</td>
+          <td>${card.score_value}</td>
+          <td>${escapeHtml(card.profession || '-')}</td>
+          <td>${escapeHtml(obtainText(card.obtain) || '-')}</td>
+          <td>${yesNo(card.is_enabled)}</td>
+          <td>
+            <button class="ghost small" data-action="edit-card" data-id="${card.id}">编辑</button>
+            <button class="danger small" data-action="delete-card" data-id="${card.id}">删除</button>
+          </td>
+        </tr>`,
+        )
+        .join('')
+    : '<tr><td colspan="9" class="muted">没有符合条件的卡牌。</td></tr>';
+}
+
+async function loadCards() {
+  const data = await api('/cards');
+  state.cards = data.list || [];
+  fillCardFilterOptions();
+  renderCards();
 }
 
 function cardFormHtml(card = {}) {
+  const currentRarity = Number.parseInt(card.rarity, 10) || 6;
+  const rarityOptions = [6, 5, 4, 3, 2, 1]
+    .map(
+      (rarity) =>
+        `<option value="${rarity}" ${currentRarity === rarity ? 'selected' : ''}>${rarity}★</option>`,
+    )
+    .join('');
   return `
     <div class="row" style="margin-bottom: 12px">
       <div class="field">
@@ -366,15 +861,18 @@ function cardFormHtml(card = {}) {
     <div class="row" style="margin-bottom: 12px">
       <div class="field">
         <label>稀有度</label>
-        <select id="c_rarity">
-          ${['N', 'R', 'SR', 'SSR', 'UR']
-            .map(
-              (rarity) =>
-                `<option value="${rarity}" ${String(card.rarity || 'N').toUpperCase() === rarity ? 'selected' : ''}>${rarity}</option>`,
-            )
-            .join('')}
-        </select>
+        <select id="c_rarity">${rarityOptions}</select>
       </div>
+      <div class="field">
+        <label>职业</label>
+        <input id="c_profession" value="${escapeHtml(card.profession || '')}" placeholder="近卫 / 狙击 / 术师 ..." />
+      </div>
+      <div class="field">
+        <label>获取方式</label>
+        <input id="c_obtain" value="${escapeHtml(toObtainList(card.obtain).join(','))}" placeholder="多个用英文逗号分隔，如：公开招募,中坚寻访" />
+      </div>
+    </div>
+    <div class="row" style="margin-bottom: 12px">
       <div class="field">
         <label>积分</label>
         <input id="c_score_value" type="number" value="${card.score_value ?? 0}" />
@@ -395,7 +893,9 @@ function openCardModal(card) {
     const payload = {
       card_key: $('c_card_key').value.trim(),
       card_name: $('c_card_name').value.trim(),
-      rarity: $('c_rarity').value,
+      rarity: Number.parseInt($('c_rarity').value, 10),
+      profession: $('c_profession').value.trim(),
+      obtain: toObtainList($('c_obtain').value),
       score_value: Number.parseInt($('c_score_value').value, 10) || 0,
       is_enabled: $('c_is_enabled').checked,
       description: $('c_description').value.trim(),
@@ -412,6 +912,46 @@ function openCardModal(card) {
     closeModal();
     await switchTab('cards');
     showMessage('卡牌已保存。', 'success');
+  });
+}
+
+/* ---------------- JSON 批量导入 ---------------- */
+
+function openImportModal(initialText = '') {
+  const body = `
+    <p class="hint">
+      支持 resource/gacha_YYYY-MM-DD.json 的原有格式（对象 map）、卡牌数组，或 {"cards":[...]} 包装。
+      字段：id / name / rarity(1~6) / profession / obtain（也兼容 card_key / card_name）。
+       obtain 支持 "公开招募,中坚寻访" 这种英文逗号多值，导入时会自动转成数组。
+      已存在的 card_key 会更新名称、星级、职业、获取方式与积分。
+    </p>
+    <div class="field">
+      <label>JSON 内容</label>
+      <textarea id="importText" rows="12" placeholder='{ "RE21": { "id": "RE21", "name": "机械师", "rarity": 6, "profession": "重装", "obtain": "活动获得" } }'>${escapeHtml(initialText)}</textarea>
+    </div>
+  `;
+
+  openModal('上传 JSON 录入卡牌', body, async () => {
+    const text = $('importText').value.trim();
+    if (!text) {
+      showModalMessage('请先选择 JSON 文件或粘贴 JSON 内容。');
+      return;
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (error) {
+      showModalMessage(`JSON 解析失败：${error.message}`);
+      return;
+    }
+    const data = await api('/cards/import', { method: 'POST', body: { cards: parsed } });
+    closeModal();
+    await switchTab('cards');
+    const extra = data.skipped ? `，跳过 ${data.skipped} 条` : '';
+    showMessage(`导入完成：新增 ${data.created} 条，更新 ${data.updated} 条${extra}。`, 'success');
+    if (data.errors && data.errors.length) {
+      console.warn('[import] 部分数据被跳过：', data.errors);
+    }
   });
 }
 
@@ -545,12 +1085,13 @@ async function loadRecords(page = state.recordPage) {
 
 /* ---------------- 弹窗 ---------------- */
 
-function openModal(title, bodyHtml, onSubmit) {
+function openModal(title, bodyHtml, onSubmit, { wide = false } = {}) {
   $('modalTitle').textContent = title;
   $('modalBody').innerHTML = bodyHtml;
   $('modalMsg').className = 'msg';
   state.modalSubmit = onSubmit;
   $('modalSubmit').classList.toggle('hidden', !onSubmit);
+  $('modal').querySelector('.card').classList.toggle('wide', Boolean(wide));
   $('modal').classList.add('show');
 }
 
@@ -575,7 +1116,40 @@ $('logoutBtn').addEventListener('click', logout);
 
 $('newPoolBtn').addEventListener('click', () => openPoolModal(null));
 $('newCardBtn').addEventListener('click', () => openCardModal(null));
-$('cardSearchBtn').addEventListener('click', () => switchTab('cards'));
+$('cardSearchBtn').addEventListener('click', () => renderCards());
+$('cardKeyword').addEventListener('input', () => renderCards());
+$('cardKeyword').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    renderCards();
+  }
+});
+['cardRarityFilter', 'cardProfessionFilter', 'cardObtainFilter'].forEach((id) => {
+  $(id).addEventListener('change', () => {
+    normalizeMultiSelect($(id));
+    renderCards();
+  });
+});
+$('cardSort').addEventListener('change', () => renderCards());
+$('cardResetFilterBtn').addEventListener('click', () => {
+  $('cardKeyword').value = '';
+  resetMultiSelect($('cardRarityFilter'));
+  resetMultiSelect($('cardProfessionFilter'));
+  resetMultiSelect($('cardObtainFilter'));
+  $('cardSort').value = 'default';
+  renderCards();
+});
+$('importCardsBtn').addEventListener('click', () => $('importFileInput').click());
+$('importFileInput').addEventListener('change', () => {
+  const file = $('importFileInput').files && $('importFileInput').files[0];
+  if (!file) {
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => openImportModal(String(reader.result || ''));
+  reader.onerror = () => showMessage('文件读取失败。', 'error');
+  reader.readAsText(file, 'utf-8');
+  $('importFileInput').value = '';
+});
 $('recordSearchBtn').addEventListener('click', () => loadRecords(1).catch((error) => showMessage(error.message, 'error')));
 $('userSearchBtn').addEventListener('click', () => {
   state.userKeyword = $('userKeyword').value.trim();
@@ -616,6 +1190,8 @@ document.addEventListener('click', async (event) => {
       openPoolModal(state.pools.find((pool) => pool.id === id));
     } else if (action === 'pool-cards') {
       await openPoolCardsModal(state.pools.find((pool) => pool.id === id));
+      } else if (action === 'copy-pool') {
+        openCopyPoolModal(state.pools.find((pool) => pool.id === id));
     } else if (action === 'delete-pool') {
       if (window.confirm('删除卡池会同时移除它的卡池配置与当日配额记录，确认删除？')) {
         await api(`/pools/${id}`, { method: 'DELETE' });

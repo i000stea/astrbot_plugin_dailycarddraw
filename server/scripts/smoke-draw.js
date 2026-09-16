@@ -10,7 +10,7 @@ const assert = require('assert');
 const { config } = require('../src/config');
 const { buildContainer } = require('../src/container');
 const { createFakeDb } = require('./fakeDb');
-const { pickWeighted, highestRarity, rarityRank } = require('../src/domain/draw');
+const { pickWeighted, pickWeightedByRarity, highestRarity, rarityRank } = require('../src/domain/draw');
 
 const failures = [];
 function check(label, fn) {
@@ -80,13 +80,27 @@ async function main() {
     assert.ok(Math.abs(rate - 0.1) < 0.02, `实际 ${(rate * 100).toFixed(2)}% 偏离期望 10%`);
   });
 
-  check('highestRarity 按 N<R<SR<SSR<UR 取最高', () => {
-    assert.strictEqual(highestRarity(['N', 'R', 'SR']), 'SR');
-    assert.strictEqual(highestRarity(['SSR', 'UR', 'R']), 'UR');
-    assert.strictEqual(highestRarity(['N', 'N']), 'N');
+  check('highestRarity 按 1~6 星取最高', () => {
+    assert.strictEqual(highestRarity([1, 3, 5]), '5');
+    assert.strictEqual(highestRarity([6, 2, 4]), '6');
+    assert.strictEqual(highestRarity([1, 1]), '1');
     assert.strictEqual(highestRarity([]), '');
-    assert.ok(rarityRank('SSR') > rarityRank('SR'));
+    assert.ok(rarityRank(6) > rarityRank(5));
     assert.strictEqual(rarityRank('??'), -1);
+  });
+
+  check('pickWeightedByRarity 先按星级权重定档，再按卡牌权重定卡', () => {
+    const cards = [
+      { card_name: 'six-a', rarity: 6, score_value: 1, weight: 1 },
+      { card_name: 'six-b', rarity: 6, score_value: 1, weight: 1 },
+      { card_name: 'one-a', rarity: 1, score_value: 1, weight: 100 },
+    ];
+    for (let index = 0; index < 200; index += 1) {
+      const picked = pickWeightedByRarity(cards, [{ rarity: 6, weight: 1 }, { rarity: 1, weight: 0 }], 1)[0];
+      assert.strictEqual(picked.rarity, 6);
+    }
+    const fallback = pickWeightedByRarity(cards, [], 1)[0];
+    assert.ok([1, 6].includes(fallback.rarity));
   });
 
   // ---------- 单抽 ----------
@@ -400,7 +414,7 @@ async function main() {
   const card = await services.pool.createCard({
     card_key: 'test_card',
     card_name: '测试卡',
-    rarity: 'UR',
+    rarity: 6,
     score_value: 30,
   });
   check('新建卡牌成功', () => assert.ok(card.id > 4));

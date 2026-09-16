@@ -10,15 +10,19 @@ from .enums import DrawMode
 class DrawCardItem:
     """单张卡牌结果。"""
 
+    card_key: str
     card_name: str
     rarity: str
+    profession: str = ""
     score: int = 0
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "DrawCardItem":
         return cls(
+            card_key=str(data.get("card_key", "")),
             card_name=str(data.get("card_name", "未知卡牌")),
             rarity=str(data.get("rarity", "?")),
+            profession=str(data.get("profession", "")),
             score=int(data.get("score", 0) or 0),
         )
 
@@ -53,6 +57,7 @@ class DrawResult:
     cards: list[DrawCardItem] = field(default_factory=list)
     quota: QuotaInfo = field(default_factory=QuotaInfo)
     total_score: int = 0
+    image_url: str = ""
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "DrawResult":
@@ -68,6 +73,7 @@ class DrawResult:
             cards=cards,
             quota=QuotaInfo.from_dict(data.get("quota")),
             total_score=total_score,
+            image_url=str(data.get("image_url", "") or ""),
         )
 
 

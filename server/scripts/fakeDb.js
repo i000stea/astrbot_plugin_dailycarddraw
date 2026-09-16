@@ -31,10 +31,10 @@ function createState() {
       },
     ],
     cards: [
-      { id: 1, card_key: 'star_traveler', card_name: '星穹旅人', rarity: 'SSR', score_value: 12, description: '', is_enabled: 1 },
-      { id: 2, card_key: 'star_apprentice', card_name: '巡星学徒', rarity: 'SR', score_value: 5, description: '', is_enabled: 1 },
-      { id: 3, card_key: 'wild_walker', card_name: '荒野旅者', rarity: 'R', score_value: 2, description: '', is_enabled: 1 },
-      { id: 4, card_key: 'morning_recorder', card_name: '晨光记录员', rarity: 'N', score_value: 1, description: '', is_enabled: 1 },
+      { id: 1, card_key: 'star_traveler', card_name: '星穹旅人', rarity: 6, profession: '术师', obtain: '标准寻访', score_value: 12, description: '', is_enabled: 1 },
+      { id: 2, card_key: 'star_apprentice', card_name: '巡星学徒', rarity: 5, profession: '辅助', obtain: '标准寻访', score_value: 5, description: '', is_enabled: 1 },
+      { id: 3, card_key: 'wild_walker', card_name: '荒野旅者', rarity: 4, profession: '近卫', obtain: '活动获得', score_value: 2, description: '', is_enabled: 1 },
+      { id: 4, card_key: 'morning_recorder', card_name: '晨光记录员', rarity: 1, profession: '先锋', obtain: '活动获得', score_value: 1, description: '', is_enabled: 1 },
     ],
     poolCards: [
       { id: 1, pool_id: 1, card_id: 1, weight: 5, is_up: 0 },
@@ -42,11 +42,13 @@ function createState() {
       { id: 3, pool_id: 1, card_id: 3, weight: 40, is_up: 0 },
       { id: 4, pool_id: 1, card_id: 4, weight: 60, is_up: 0 },
     ],
+    // 稀有度权重（两段式抽卡：先 roll 星级）。默认空 -> 回退到卡牌权重之和。
+    poolRarities: [],
     quotas: [],
     records: [],
     items: [],
     profiles: [],
-    autoIncrement: { pools: 2, cards: 5, poolCards: 5, quotas: 1, records: 1, items: 1 },
+    autoIncrement: { pools: 2, cards: 5, poolCards: 5, poolRarities: 1, quotas: 1, records: 1, items: 1 },
   };
 }
 
@@ -250,6 +252,7 @@ function createFakeDb() {
     { test: /DELETE FROM card_pool WHERE id = \?/i, handle: (params) => {
       const before = db.state.pools.length;
       db.state.pools = db.state.pools.filter((row) => row.id !== params[0]);
+      db.state.poolRarities = db.state.poolRarities.filter((row) => row.pool_id !== params[0]);
       return write(0, before - db.state.pools.length);
     } },
 
@@ -276,22 +279,75 @@ function createFakeDb() {
       },
     },
     {
+      // 批量导入：INSERT INTO card_item (...) VALUES (...),(...) ON DUPLICATE KEY UPDATE ...
+      test: /INSERT INTO card_item[\s\S]*?ON DUPLICATE KEY UPDATE/i,
+      handle: (params) => {
+        const match = /INSERT INTO card_item \(([^)]+)\)/i.exec(db.currentSql);
+        const columns = match[1].split(',').map((column) => column.trim().replace(/`/g, ''));
+        const rowCount = params.length / columns.length;
+        for (let index = 0; index < rowCount; index += 1) {
+          const record = {};
+          columns.forEach((column, columnIndex) => {
+            record[column] = params[index * columns.length + columnIndex];
+          });
+          const existing = db.state.cards.find((card) => card.card_key === record.card_key);
+          if (existing) {
+            // 与 SQL 的 ON DUPLICATE KEY UPDATE 对齐：只更新这几列
+            existing.card_name = record.card_name;
+            existing.rarity = record.rarity;
+            existing.profession = record.profession;
+            existing.obtain = record.obtain;
+            existing.score_value = record.score_value;
+          } else {
+            db.state.cards.push({
+              id: nextId('cards'),
+              card_key: record.card_key,
+              card_name: record.card_name,
+              rarity: record.rarity,
+              profession: record.profession,
+              obtain: record.obtain,
+              score_value: record.score_value,
+              description: record.description ?? '',
+              is_enabled: record.is_enabled ?? 1,
+            });
+          }
+        }
+        return write(0, rowCount);
+      },
+    },
+    {
       test: /INSERT INTO card_item/i,
       handle: (params) => {
-        const id = nextId('cards');
-        db.state.cards.push({
-          id,
-          card_key: params[0],
-          card_name: params[1],
-          rarity: params[2],
-          score_value: params[3],
-          description: params[4],
-          is_enabled: params[5],
+        const match = /INSERT INTO card_item \(([^)]+)\)/i.exec(db.currentSql);
+        const columns = match[1].split(',').map((column) => column.trim().replace(/`/g, ''));
+        const record = { description: '', is_enabled: 1, profession: '', obtain: '', score_value: 0 };
+        columns.forEach((column, index) => {
+          record[column] = params[index];
         });
+        const id = nextId('cards');
+        db.state.cards.push({ id, ...record });
         return write(id, 1);
       },
     },
-    { test: /UPDATE card_item SET/i, handle: () => write(0, 1) },
+    {
+      test: /UPDATE card_item SET/i,
+      handle: (params) => {
+        const match = /UPDATE card_item SET (.*) WHERE id = \?/i.exec(db.currentSql);
+        if (!match) {
+          return write(0, 0);
+        }
+        const columns = match[1].split(',').map((part) => part.trim().split(' = ')[0].replace(/`/g, ''));
+        const id = params[params.length - 1];
+        const row = db.state.cards.find((item) => item.id === id);
+        if (!row) {
+          return write(0, 0);
+        }
+        columns.forEach((column, index) => {
+          row[column] = params[index];
+        });
+        return write(0, 1);
+      },
+    },
     { test: /DELETE FROM card_item WHERE id = \?/i, handle: (params) => {
       const before = db.state.cards.length;
       db.state.cards = db.state.cards.filter((row) => row.id !== params[0]);
@@ -366,6 +422,40 @@ function createFakeDb() {
           });
         }
         return write(0, params.length / 4);
+      },
+    },
+
+    // ---------- pool_rarity ----------
+    {
+      test: /FROM pool_rarity WHERE pool_id = \?/i,
+      handle: (params) =>
+        select(
+          db.state.poolRarities
+            .filter((row) => row.pool_id === params[0])
+            .sort((a, b) => a.rarity - b.rarity)
+            .map((row) => ({ rarity: row.rarity, weight: row.weight })),
+        ),
+    },
+    { test: /DELETE FROM pool_rarity WHERE pool_id = \?/i, handle: (params) => {
+      const before = db.state.poolRarities.length;
+      db.state.poolRarities = db.state.poolRarities.filter((row) => row.pool_id !== params[0]);
+      return write(0, before - db.state.poolRarities.length);
+    } },
+    {
+      test: /INSERT INTO pool_rarity \(pool_id, rarity, weight\) VALUES/i,
+      handle: (params) => {
+        for (let index = 0; index < params.length; index += 3) {
+          const poolId = params[index];
+          const rarity = params[index + 1];
+          const weight = params[index + 2];
+          const existing = db.state.poolRarities.find((row) => row.pool_id === poolId && row.rarity === rarity);
+          if (existing) {
+            existing.weight = weight;
+          } else {
+            db.state.poolRarities.push({ id: nextId('poolRarities'), pool_id: poolId, rarity, weight });
+          }
+        }
+        return write(0, params.length / 3);
       },
     },
 

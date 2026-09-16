@@ -52,6 +52,23 @@ const config = {
     tenCount: toInt(process.env.DRAW_TEN_COUNT, 10),
     maxPageSize: toInt(process.env.MAX_PAGE_SIZE, 50),
   },
+    /** 图片资源目录：单独上传的 resource 目录默认位于 server/resource。 */
+    resourceDir: toText(process.env.RESOURCE_DIR, path.join(__dirname, '..', 'resource')),
+    /** 生成的抽卡图片缓存目录，默认 server/cache/draw-images，缓存 12 小时。 */
+    imageCacheDir: toText(
+      process.env.IMAGE_CACHE_DIR,
+      path.join(__dirname, '..', 'cache', 'draw-images'),
+    ),
+    imageCacheTtlSeconds: toInt(process.env.IMAGE_CACHE_TTL_SECONDS, 12 * 60 * 60),
+    image: {
+      cardWidth: toInt(process.env.IMAGE_CARD_WIDTH, 320),
+      cardHeight: toInt(process.env.IMAGE_CARD_HEIGHT, 480),
+      avatarSize: toInt(process.env.IMAGE_AVATAR_SIZE, 220),
+      professionSize: toInt(process.env.IMAGE_PROFESSION_SIZE, 56),
+      raritySize: toInt(process.env.IMAGE_RARITY_SIZE, 72),
+      padding: toInt(process.env.IMAGE_PADDING, 16),
+    },
+
 };
 
 module.exports = { config };

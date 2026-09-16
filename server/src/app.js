@@ -14,7 +14,7 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 function createApp({ config, services, enableRequestLog = true }) {
   const app = express();
   app.disable('x-powered-by');
-  app.use(express.json({ limit: '256kb' }));
+  app.use(express.json({ limit: '4mb' }));
 
   if (enableRequestLog) {
     app.use((req, res, next) => {

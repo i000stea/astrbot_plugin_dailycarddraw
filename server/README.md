@@ -32,6 +32,32 @@ server/
   ecosystem.config.js    PM2 配置
 ```
 
+## 抽卡图片渲染
+
+从 `v1.1.0` 起，`/draw` 接口会在抽卡成功后生成结果图片，并在 `data.image_url` 返回相对地址：
+
+```json
+{
+  "image_url": "/api/daily-carddraw/images/20260701-000123.png"
+}
+```
+
+渲染规则：
+
+- 单抽：生成一张 `320×480` 卡片图；
+- 十连：高度保持 `480`，宽度按 `320 × 张数` 横向拼接长图；
+- 背景：暗灰色 `#2B2B2B`；
+- 渐变：以卡片中心为稀有度颜色最浓处，向上下两端透明；
+- 头像：`resource/avatar/{card_key}.png`，居中、不铺满，找不到则跳过；
+- 职业：`resource/profession/{profession}.png`，左上角，找不到则留空；
+- 稀有度：`resource/rarity/rarity{1-6}.png`，右下角；
+- 缓存：生成文件默认放在 `server/cache/draw-images/`，缓存 12 小时；
+- 资源目录 `server/resource/` 体积较大，**单独上传**，不要打进更新包。
+
+图片生成失败只会降级为纯文本，不会影响抽卡落库。
+
+
+
 ## 一、准备数据库（宝塔面板）
 
 1. 宝塔 → 数据库 → 添加数据库，记下库名 / 用户名 / 密码；
@@ -39,7 +65,7 @@ server/
    - 宝塔「数据库 → 管理 → 导入」，选择 `server/sql/001_init_daily_carddraw.sql`；
    - 或命令行：`mysql -u 库用户名 -p 库名 < server/sql/001_init_daily_carddraw.sql`。
 
-脚本会建 7 张表，并写入示例卡池 `normal_pool`（常驻卡池）与 4 张示例卡牌及其初始权重。
+脚本会建 8 张表，并写入示例卡池 `normal_pool`（常驻卡池）、示例卡牌及其初始权重与稀有度权重。
 
 ## 二、部署 Node 服务
 
@@ -51,13 +77,13 @@ git clone https://github.com/i000stea/astrbot_plugin_dailycarddraw.git
 cd astrbot_plugin_dailycarddraw/server
 
 # 安装依赖（宝塔上用面板里选的 Node 版本；也可用面板的「Node 项目」一键安装依赖）
-npm ci --omit=dev
+npm install --omit=dev
 
 # 配置
 cp .env.example .env
 vi .env            # 填 MySQL、ADMIN_API_TOKEN、PANEL_PASSWORD、PANEL_JWT_SECRET
 
-# 自检：启动时会校验 MySQL 连通性与 7 张表是否齐全
+# 自检：启动时会校验 MySQL 连通性与 8 张表是否齐全
 node src/server.js
 # 看到 [boot] daily-carddraw-server 已启动 就可以 Ctrl+C 了
 ```
@@ -158,13 +184,13 @@ AstrBot → 插件管理 → 每日抽卡插件 → 配置：
 ```powershell
 cd server
 .\updatePush.cmd                            # 只打包：生成 update\ 与 update.tar.gz
-.\updatePush.cmd -Server 1.2.3.4            # 打包 + 上传 + 远程 npm ci + pm2 重启
+.\updatePush.cmd -Server 1.2.3.4            # 打包 + 上传 + 远程 npm install + pm2 重启
 .\updatePush.cmd -Server 1.2.3.4 -DryRun    # 只预览将要执行的远程命令，不真的上传
 ```
 
 常用参数：`-Server` / `-User` / `-Port` / `-TargetDir` 覆盖脚本顶部配置区的默认值；`-SkipInstall` 只更新文件、不动依赖与进程；`-Force` 跳过上传前确认。
 
-脚本做的事：生成 `update\`（不含 `node_modules`、`scripts`、`.env`）→ 打包 `update.tar.gz` → `scp` 到服务器 `/tmp` → 远程把旧版本备份到 `/tmp/daily-carddraw-server-backup.tar.gz` → 解包覆盖（**不会动服务器上的 `.env` 与 `node_modules`**）→ `npm ci --omit=dev` → `pm2 restart` → 请求 `/health` 自检。每步都会写进 `server/update-push.log`。
+脚本做的事：生成 `update\`（不含 `node_modules`、`scripts`、`.env`）→ 打包 `update.tar.gz` → `scp` 到服务器 `/tmp` → 远程把旧版本备份到 `/tmp/daily-carddraw-server-backup.tar.gz` → 解包覆盖（**不会动服务器上的 `.env` 与 `node_modules`**）→ `npm install --omit=dev` → `pm2 restart` → 请求 `/health` 自检。每步都会写进 `server/update-push.log`。
 
 首次连接会提示输入服务器密码；配置好 SSH 公钥后可完全无人值守。
 
@@ -195,8 +221,10 @@ cd server
 | `POST /login` | `{username,password}` → `{token}` |
 | `GET /overview` | 总记录、总积分、用户数、今日记录与人数、卡池数 |
 | `GET/POST /pools`、`PUT/DELETE /pools/:id` | 卡池增删改查 |
+| `POST /pools/:id/copy` | 复制卡池（连同卡牌权重、稀有度权重、开关与配额） |
 | `GET/PUT /pools/:id/cards` | 卡池内卡牌与权重（`PUT` 整体替换） |
-| `GET/POST /cards`、`PUT/DELETE /cards/:id` | 卡牌增删改查 |
+| `GET/POST /cards`、`PUT/DELETE /cards/:id` | 卡牌增删改查（字段：card_key/card_name/rarity(1~6)/profession/obtain/score_value；`obtain` 为字符串数组） |
+| `POST /cards/import` | 上传 JSON 批量录入卡牌（`{cards: <gacha JSON>}`，按 card_key upsert；`obtain` 的逗号多值会转成数组） |
 | `GET /users` | 用户档案分页（`keyword` 支持 QQ / 昵称模糊） |
 | `GET /users/:qqId/records` | 某个 QQ 的抽卡记录 |
 | `POST /users/:qqId/reset-quota` | 重置某 QQ 当日次数 |
@@ -205,7 +233,7 @@ cd server
 ## 前端页面
 
 - `/` **查询页**：输入 QQ 号 + 选卡池 → 今日次数、最近结果、累计统计、历史分页。
-- `/admin` **管理后台**：登录后进入「概览 / 卡池 / 卡牌 / 用户 / 流水」四个标签页；卡池页可编辑每日配额、单抽十连开关、起止时间，并通过「卡池配置」调整每张卡的权重与 UP 标记（权重 0 = 不参与抽取，保存立即生效）。
+- `/admin` **管理后台**：登录后进入「概览 / 卡池 / 卡牌 / 用户 / 流水」五个标签页；「卡牌」页支持**上传 JSON 一键录入**（直接吃 `resource/gacha_YYYY-MM-DD.json`），也可单条增删改，并支持按稀有度 / 职业 / 获取方式**多选筛选**（含「全部」）、关键词搜索、以及按稀有度或 card_key 本地排序；「卡池」页支持**一键复制卡池**（含卡牌权重、稀有度权重与开关/配额）；「卡池配置」分两段设置——先配**稀有度权重**（决定各星级概率，改动实时联动概率显示），再配每张卡的**卡牌权重与 UP**（决定同星级内概率），支持按获取方式**一键批量加入 / 移除**，并可筛选「显示全部 / 仅权重&gt;0 / 仅权重=0」，权重 0 = 不参与，保存立即生效。
 
 前端是零构建的静态页（原生 JS + fetch），不需要 npm build，改完刷新即可。
 

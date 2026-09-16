@@ -93,7 +93,7 @@ function createManageRoutes({ config, services }) {
     '/pools/:id/cards',
     wrap(async (req, res) => {
       const items = (req.body || {}).items;
-      res.json(ok(await services.pool.replacePoolCards(req.params.id, items), '卡池配置已保存'));
+      res.json(ok(await services.pool.replacePoolCards(req.params.id, items, (req.body || {}).rarity_items), '卡池配置已保存'));
     }),
   );
 
@@ -126,7 +126,16 @@ function createManageRoutes({ config, services }) {
   );
 
   router.get(
-    '/users',
+    /*
+    router.post(
+      '/cards/import',
+      wrap(async (req, res) => {
+        res.json(ok(await services.pool.importCards(req.body || {}), '卡牌数据已导入'));
+      }),
+    );
+
+*/
+      '/users',
     wrap(async (req, res) => {
       const data = await services.admin.listProfiles({
         keyword: req.query.keyword,
@@ -173,7 +182,23 @@ function createManageRoutes({ config, services }) {
     }),
   );
 
-  return router;
+  // 上传 JSON 批量录入卡牌（gacha_YYYY-MM-DD.json 格式）。
+    router.post(
+      '/cards/import',
+      wrap(async (req, res) => {
+        res.json(ok(await services.pool.importCards(req.body || {}), '卡牌数据已导入'));
+      }),
+    );
+
+    // 复制卡池（含卡牌权重与稀有度权重）。
+    router.post(
+      '/pools/:id/copy',
+      wrap(async (req, res) => {
+        res.json(ok(await services.pool.copyPool(req.params.id, req.body || {}), '卡池已复制'));
+      }),
+    );
+
+return router;
 }
 
 module.exports = { createManageRoutes };

@@ -4,6 +4,7 @@ const { createDrawService } = require('./services/drawService');
 const { createQueryService } = require('./services/queryService');
 const { createPoolService } = require('./services/poolService');
 const { createAdminService } = require('./services/adminService');
+const { createImageService } = require('./services/imageService');
 
 const poolRepository = require('./repositories/poolRepository');
 const quotaRepository = require('./repositories/quotaRepository');
@@ -24,11 +25,14 @@ function buildContainer({ pool, config, repositories }) {
     cardRepository,
   };
 
+  const imageService = createImageService({ config });
+
   return {
     draw: createDrawService({ pool, config, repositories: repos }),
     query: createQueryService({ pool, config, repositories: repos }),
     pool: createPoolService({ pool, config, repositories: repos }),
     admin: createAdminService({ pool, config, repositories: repos }),
+    image: imageService,
   };
 }
 

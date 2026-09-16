@@ -34,11 +34,46 @@ function createPluginRoutes({ services }) {
         poolKey: body.pool_key,
         drawMode: body.draw_mode,
       });
+
+        // 图片生成失败时只降级为纯文本，不影响抽卡结果落库。
+        if (services.image && data && Array.isArray(data.cards) && data.cards.length) {
+          try {
+            const image = await services.image.renderDrawImage({
+              recordNo: data.record_no,
+              cards: data.cards,
+            });
+            if (image && image.urlPath) {
+              data.image_url = image.urlPath;
+            }
+          } catch (imageError) {
+            console.error('[image] 生成抽卡图片异常：', imageError);
+          }
+        }
+
       res.json(ok(data, '抽卡成功'));
     } catch (error) {
       next(error);
     }
   });
+
+  /** 抽卡结果图片：返回相对地址，插件按 api_base_url 拼接后发送。 */
+  router.get('/images/:file', (req, res) => {
+    if (!services.image) {
+      res.status(404).json({ success: false, message: '图片服务未启用。', data: null });
+      return;
+    }
+    const filePath = services.image.getImagePath(req.params.file);
+    if (!filePath) {
+      res.status(404).json({ success: false, message: '图片不存在。', data: null });
+      return;
+    }
+    res.sendFile(filePath, (error) => {
+      if (error && !res.headersSent) {
+        res.status(404).json({ success: false, message: '图片不存在。', data: null });
+      }
+    });
+  });
+
 
   router.get('/today', async (req, res, next) => {
     try {

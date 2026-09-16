@@ -36,7 +36,15 @@ async function request(path, options) {
 }
 
 function rarityBadge(rarity) {
-  const value = String(rarity || '?').toUpperCase();
+  const raw = String(rarity ?? '').trim();
+  if (!raw) {
+    return '<span class="rarity">?</span>';
+  }
+  if (/^\d+$/.test(raw)) {
+    const stars = Number(raw);
+    return `<span class="rarity r${stars}">${stars}★</span>`;
+  }
+  const value = raw.toUpperCase();
   return `<span class="rarity ${value}">${value}</span>`;
 }
 
