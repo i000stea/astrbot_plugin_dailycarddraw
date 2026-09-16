@@ -23,6 +23,10 @@ class ConfigHelper:
     def get_default_pool_key(self) -> str:
         return str(self.config.get("default_pool_key", "normal_pool"))
 
+    def get_draw_reply_template(self) -> str:
+        template = str(self.config.get("draw_reply_template", "")).strip()
+        return template or "您今天的{draw_label}结果如下："
+
     def get_api_base_url(self) -> str:
         return str(self.config.get("api_base_url", "")).rstrip("/")
 

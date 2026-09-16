@@ -488,16 +488,60 @@ class DailyCardDrawPlugin(Star):
         except ValueError as exc:
             message = f"抽卡参数异常：{exc}"
 
-        # 图片发送失败时至少保证文字结果已经发出。
+        # 优先把图片和文字合并成同一条消息；只有合并失败时才退回两条消息。
         if image_url:
-            try:
-                yield event.image_result(image_url)
-            except Exception as exc:  # noqa: BLE001 - 图片发送失败不应该影响抽卡结果
-                logger.error(f"抽卡图片发送失败：{exc!r}")
+            combined_result = self._build_image_text_result(event, message, image_url)
+            if combined_result is not None:
+                yield combined_result
+            else:
+                yield event.plain_result(message)
+                try:
+                    yield event.image_result(image_url)
+                except Exception as exc:  # noqa: BLE001 - 图片发送失败不应该影响抽卡结果
+                    logger.error(f"抽卡图片发送失败：{exc!r}")
+        else:
+            yield event.plain_result(message)
 
         # 回复后终止事件传播：避免同一个命令再被其他插件的 handler 或默认 LLM 请求回答一遍。
-        yield event.plain_result(message)
         event.stop_event()
+
+    @staticmethod
+    def _build_image_text_result(
+        event: AstrMessageEvent,
+        text: str,
+        image_url: str,
+    ):
+        """把图片和文字合并成一个 AstrBot 消息结果。
+
+        AstrBot 不同小版本的消息链 API 略有差异，这里按兼容顺序尝试：
+        1. event.make_result().message(...).url_image(...)
+        2. event.chain_result([Plain, Image])
+        合并失败时返回 None，调用方会降级为两条消息。
+        """
+        make_result = getattr(event, "make_result", None)
+        if callable(make_result):
+            try:
+                result = make_result()
+                text_result = result.message(text)
+                if text_result is not None:
+                    result = text_result
+                image_result = result.url_image(image_url)
+                if image_result is not None:
+                    result = image_result
+                return result
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(f"make_result 合并图片和文字失败：{exc!r}")
+
+        chain_result = getattr(event, "chain_result", None)
+        if callable(chain_result):
+            try:
+                from astrbot.api.message_components import Image, Plain
+
+                return chain_result([Plain(text), Image.fromURL(image_url)])
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(f"chain_result 合并图片和文字失败：{exc!r}")
+
+        return None
 
     @filter.command("抽卡", alias={"寻访"})
     async def draw(self, event: AstrMessageEvent, arg1: str = "", arg2: str = ""):

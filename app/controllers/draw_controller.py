@@ -4,7 +4,7 @@ from .base_controller import BaseController
 from ..models.enums import DrawMode
 from ..models.view_models import DrawReply
 from ..services.draw_service import DrawService
-from ..utils.message_formatter import format_draw_result
+from ..utils.message_formatter import format_draw_reply_template, format_draw_result
 
 
 class DrawController(BaseController):
@@ -38,7 +38,16 @@ class DrawController(BaseController):
             if base_url:
                 image_url = f"{base_url}{image_url}"
 
+        if image_url:
+            text = format_draw_reply_template(
+                self.config_helper.get_draw_reply_template(),
+                context.qq_id,
+                result,
+            )
+        else:
+            text = format_draw_result(context.qq_id, result)
+
         return DrawReply(
-            text=format_draw_result(context.qq_id, result, compact=bool(image_url)),
+            text=text,
             image_url=image_url,
         )

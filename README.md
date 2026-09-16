@@ -100,6 +100,7 @@ pip install -r requirements.txt
 | `api_base_url` | string | 空 | 后端地址，例如 `https://your-domain.com`；插件会在其后拼接 `/api/daily-carddraw/*`。AstrBot 跑在 Docker 里时不能用 `127.0.0.1`，应填 Docker 网关 IP（如 `http://172.17.0.1:3100`），详见 `server/README.md` |
 | `api_token` | string（secret） | 空 | 后端鉴权 Token，会以 `Authorization: Bearer <token>` 发送；后端不需要鉴权时留空 |
 | `default_pool_key` | string | `normal_pool` | 默认卡池 Key，用户不带卡池参数时使用 |
+| `draw_reply_template` | string | `您今天的{draw_label}结果如下：` | 抽卡结果前的文字模板，图片会追加在文字后。可用变量：`{draw_label}`、`{draw_mode}`、`{qq_id}`、`{pool_name}`、`{total_score}`、`{record_no}`、`{card_count}`、`{card_list}` |
 | `request_timeout_seconds` | float | `10` | 请求后端的超时时间（秒），最小按 1 秒生效 |
 | `admin_qq_list` | list | `[]` | 管理员 QQ 白名单，列表内 QQ 才能使用 `/卡池列表`、`/重置抽卡次数` |
 | `enable_group_usage` | bool | `true` | 是否允许群聊触发 |

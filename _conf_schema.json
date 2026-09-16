@@ -24,6 +24,13 @@
         "default": "normal_pool",
         "hint": "用户执行 /抽卡 时，默认使用该卡池。"
     },
+    "draw_reply_template": {
+        "type": "string",
+        "description": "抽卡结果文字模板",
+        "default": "您今天的{draw_label}结果如下：",
+        "hint": "图片会追加在文字后面。可用变量：{draw_label}（寻访/十连寻访）、{draw_mode}（单抽/十连）、{qq_id}、{pool_name}、{total_score}、{record_no}、{card_count}、{card_list}。"
+    },
+
     "request_timeout_seconds": {
         "type": "float",
         "description": "请求后端超时时间（秒）",

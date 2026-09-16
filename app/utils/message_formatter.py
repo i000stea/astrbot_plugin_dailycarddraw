@@ -35,6 +35,41 @@ def format_draw_result(qq_id: str, result: DrawResult, *, compact: bool = False)
     )
     return "\n".join(lines)
 
+def format_draw_reply_template(template: str, qq_id: str, result: DrawResult) -> str:
+    """按配置模板生成抽卡结果前的文字。
+
+    支持变量：
+      {draw_label} 寻访 / 十连寻访
+      {draw_mode}  单抽 / 十连
+      {qq_id}
+      {pool_name}
+      {total_score}
+      {record_no}
+      {card_count}
+      {card_list}
+    """
+    card_list = "\n".join(
+        f"{index}. {card.card_name} {_rarity_text(card.rarity)}"
+        for index, card in enumerate(result.cards, start=1)
+    )
+    values = {
+        "draw_label": result.draw_mode.command_label,
+        "draw_mode": result.draw_mode.label,
+        "qq_id": qq_id,
+        "pool_name": result.pool_name,
+        "total_score": result.total_score,
+        "record_no": result.record_no,
+        "card_count": len(result.cards),
+        "card_list": card_list,
+        "image": "",
+    }
+    try:
+        return template.format(**values)
+    except (KeyError, IndexError, ValueError):
+        # 模板里写了未知变量时不要阻塞抽卡，退化为原模板。
+        return template
+
+
 
 def format_today_summary(summary: TodaySummary) -> str:
     lines = [
